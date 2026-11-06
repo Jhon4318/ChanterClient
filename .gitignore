@@ -1,0 +1,28 @@
+# Build output
+/build/
+/build-*/
+/out/
+/x64/
+/x86/
+
+# Visual Studio
+/.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.opendb
+
+# Compiler and linker output
+*.ilk
+*.exp
+*.pdb
+*.tlog
+*.idb
+*.log
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
