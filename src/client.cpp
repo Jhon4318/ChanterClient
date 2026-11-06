@@ -16,47 +16,41 @@ Client& Client::instance() {
 void Client::initialize(HMODULE module) {
     m_module = module;
 
-    // Initialize Logger
-    Logger::instance().initialize("MCBE Client", true, true);
+    Logger::instance().initialize("JhonClient", true, true);
+    LOG_INFO("Initializing JhonClient for Minecraft Bedrock v26.60...");
 
-    LOG_INFO("Initializing MCBE DX12 ModBase...");
-
-    // Initialize module manager
     ModuleManager::instance().initialize();
 
-    // Install hooks & event listeners
     if (!minecraft::hooks::initialize()) {
-        LOG_ERROR("Failed to initialize game hooks!");
+        LOG_ERROR("Game hook initialization failed. No further hooks will be installed.");
         shutdown();
-        FreeLibraryAndExitThread(m_module, 0);
+        FreeLibraryAndExitThread(m_module, 1);
         return;
     }
 
-    // Start DX12/ImGui hook
     if (!dx12_hook::start(m_module)) {
-        LOG_ERROR("Failed to start DX12 overlay hooks!");
+        LOG_ERROR("Failed to start the DirectX overlay. Shutting JhonClient down.");
         shutdown();
-        FreeLibraryAndExitThread(m_module, 0);
+        FreeLibraryAndExitThread(m_module, 1);
         return;
     }
 
-    // Safely defer config loading until ClientInstance is ready
     EventBus::instance().subscribe<ClientInstanceUpdateEvent>([this](ClientInstanceUpdateEvent&) {
         if (!m_configLoaded) {
             m_configLoaded = true;
-            LOG_INFO("ClientInstance initialized. Loading default configuration profile...");
+            LOG_INFO("Minecraft ClientInstance is ready. Loading default profile...");
             ConfigManager::instance().load_config("default");
         }
-        });
+    });
 
-    LOG_INFO("MCBE Client initialized successfully!");
+    LOG_INFO("JhonClient initialized successfully. Press INSERT for the menu or END to unload.");
 }
 
 void Client::shutdown() {
-    LOG_INFO("Shutting down MCBE Client...");
+    LOG_INFO("Shutting down JhonClient...");
     dx12_hook::stop();
     minecraft::hooks::shutdown();
     ModuleManager::instance().shutdown();
+    LOG_INFO("JhonClient shutdown complete.");
     Logger::instance().shutdown();
-    LOG_INFO("MCBE Client shutdown complete.");
 }
