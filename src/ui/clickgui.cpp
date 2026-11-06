@@ -108,11 +108,14 @@ namespace {
     }
 
     void FillShadowCircle(const ImVec2& pos, float radius, const ImColor& color, float alpha, float thickness, ImDrawList* dl) {
-        dl->AddShadowCircle(
-            pos, radius,
-            ImColor(color.Value.x, color.Value.y, color.Value.z, color.Value.w * alpha),
-            thickness, ImVec2(0.0f, 0.0f), 0, 16
-        );
+        // Approximate a soft glow using standard Dear ImGui primitives.
+        // This avoids relying on non-upstream AddShadowCircle extensions.
+        const ImU32 outer = ImColor(color.Value.x, color.Value.y, color.Value.z, color.Value.w * alpha * 0.08f);
+        const ImU32 middle = ImColor(color.Value.x, color.Value.y, color.Value.z, color.Value.w * alpha * 0.16f);
+        const ImU32 inner = ImColor(color.Value.x, color.Value.y, color.Value.z, color.Value.w * alpha * 0.28f);
+        dl->AddCircleFilled(pos, radius + thickness, outer, 32);
+        dl->AddCircleFilled(pos, radius + thickness * 0.55f, middle, 32);
+        dl->AddCircleFilled(pos, radius + thickness * 0.2f, inner, 32);
     }
 
     void DrawCheckMark(const ImVec2& pos, float size, const ImColor& color, float alpha, float thickness, ImDrawList* dl) {
