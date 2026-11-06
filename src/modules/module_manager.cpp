@@ -18,13 +18,9 @@ void ModuleManager::initialize() {
 
     LOG_INFO("Initializing ModuleManager...");
 
-    m_modules.push_back(std::make_unique<Jetpack>());
-    m_modules.push_back(std::make_unique<Fly>());
-    m_modules.push_back(std::make_unique<ArrayList>());
-    m_modules.push_back(std::make_unique<ESP>());
-    m_modules.push_back(std::make_unique<Trail>());
-    m_modules.push_back(std::make_unique<Freelook>());
-    m_modules.push_back(std::make_unique<Killaura>());
+    auto watermark = std::make_unique<Watermark>();
+    watermark->set_enabled(true);
+    m_modules.push_back(std::move(watermark));
 
     rebuild_categories();
 
@@ -32,7 +28,7 @@ void ModuleManager::initialize() {
         if (InputManager::instance().is_binding()) return;
         if (ClientInstance::isClientUiOpen() || ClientInstance::isGameUiOpen()) return;
 
-        std::shared_lock lock(m_mutex);
+        std::shared_lock moduleLock(m_mutex);
         for (const auto& module : m_modules) {
             if (!module || module->keybind() != event.key) continue;
 
@@ -40,13 +36,11 @@ void ModuleManager::initialize() {
                 if (event.action == KeyAction::Press)   module->set_enabled(true);
                 if (event.action == KeyAction::Release) module->set_enabled(false);
             }
-            else {
-                if (event.action == KeyAction::Press) {
-                    module->toggle();
-                }
+            else if (event.action == KeyAction::Press) {
+                module->toggle();
             }
         }
-        });
+    });
 
     LOG_INFO("Registered {} modules across {} categories.", m_modules.size(), m_categories.size());
     m_initialized = true;
@@ -55,6 +49,11 @@ void ModuleManager::initialize() {
 void ModuleManager::shutdown() {
     std::unique_lock lock(m_mutex);
     LOG_INFO("Shutting down ModuleManager...");
+    for (const auto& module : m_modules) {
+        if (module && module->enabled()) {
+            module->set_enabled(false);
+        }
+    }
     m_categories.clear();
     m_modules.clear();
     m_initialized = false;
@@ -98,17 +97,16 @@ std::vector<Module*> ModuleManager::modules_in_category(const std::string& categ
 }
 
 void ModuleManager::add_module(std::unique_ptr<Module> module) {
-    m_modules.push_back(std::move(module));
+    if (module) {
+        m_modules.push_back(std::move(module));
+    }
 }
 
 void ModuleManager::rebuild_categories() {
     m_categories.clear();
 
-    constexpr std::array<const char*, 5> defaultCategories{
-        "Combat",
-        "Movement",
+    constexpr std::array<const char*, 2> defaultCategories{
         "Visual",
-        "Player",
         "Configs"
     };
 
