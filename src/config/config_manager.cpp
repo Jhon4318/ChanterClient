@@ -15,7 +15,7 @@ std::filesystem::path ConfigManager::get_config_directory() const {
     char* appdata = nullptr;
     size_t len = 0;
     if (_dupenv_s(&appdata, &len, "APPDATA") == 0 && appdata != nullptr) {
-        std::filesystem::path path = std::filesystem::path(appdata) / "MCBE_DX12_ModBase" / "configs";
+        std::filesystem::path path = std::filesystem::path(appdata) / "JhonClient" / "configs";
         free(appdata);
         return path;
     }
