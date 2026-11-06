@@ -11,12 +11,11 @@ DWORD WINAPI main_thread(LPVOID param) {
         Sleep(50);
     }
 
-    LOG_INFO("Unload hotkey (END) detected. Uninjecting DLL...");
-
+    LOG_INFO("END pressed. Removing hooks and unloading JhonClient...");
     Client::instance().shutdown();
 
+    // Give the render hook a brief opportunity to leave its current callback.
     Sleep(150);
-
     FreeLibraryAndExitThread(module, 0);
 }
 
@@ -25,9 +24,10 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
         DisableThreadLibraryCalls(module);
 
         HANDLE thread = CreateThread(nullptr, 0, main_thread, module, 0, nullptr);
-        if (thread) {
-            CloseHandle(thread);
+        if (!thread) {
+            return FALSE;
         }
+        CloseHandle(thread);
     }
 
     return TRUE;
