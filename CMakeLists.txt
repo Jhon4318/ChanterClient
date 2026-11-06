@@ -48,6 +48,28 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(entt libhat minhook nlohmann_json)
 
+# MinHook v1.3.3 does not ship a CMakeLists.txt. Build its x64 sources
+# directly instead of relying on a prebuilt library from another machine.
+if(NOT TARGET minhook)
+    add_library(minhook STATIC
+        "${minhook_SOURCE_DIR}/src/buffer.c"
+        "${minhook_SOURCE_DIR}/src/hook.c"
+        "${minhook_SOURCE_DIR}/src/trampoline.c"
+        "${minhook_SOURCE_DIR}/src/hde/hde64.c"
+    )
+    target_include_directories(minhook
+        PUBLIC "${minhook_SOURCE_DIR}/include"
+        PRIVATE
+            "${minhook_SOURCE_DIR}/src"
+            "${minhook_SOURCE_DIR}/src/hde"
+    )
+    set_target_properties(minhook PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED ON
+        OUTPUT_NAME "MinHook"
+    )
+endif()
+
 add_subdirectory(external/imgui)
 
 file(GLOB_RECURSE JHONCLIENT_SOURCES CONFIGURE_DEPENDS
