@@ -67,6 +67,7 @@ target_include_directories(JhonClient PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/external"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/d3d12"
+    "${minhook_SOURCE_DIR}/include"
 )
 
 target_link_libraries(JhonClient PRIVATE
