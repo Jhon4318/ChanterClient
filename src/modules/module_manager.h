@@ -1,6 +1,7 @@
 #pragma once
 
 #include "modules/module.h"
+#include "modules/visual/Watermark.h"
 
 #include <memory>
 #include <string>
@@ -8,16 +9,6 @@
 #include <shared_mutex>
 #include <algorithm>
 #include <array>
-
-// include module headers here
-#include "modules/movement/Jetpack.h"
-#include "modules/movement/Fly.h"
-#include "modules/visual/Arraylist.h"
-#include "modules/visual/ESP.h"
-#include "modules/visual/Trail.h"
-#include "modules/visual/Freelook.h"
-#include "modules/combat/Killaura.h"
-
 
 class ModuleManager {
 public:
