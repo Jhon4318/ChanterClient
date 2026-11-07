@@ -2,6 +2,7 @@
 
 #include "modules/module.h"
 #include "modules/visual/Watermark.h"
+#include "modules/tools/SkinStealer.h"
 
 #include <memory>
 #include <string>
