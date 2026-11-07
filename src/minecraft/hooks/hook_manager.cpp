@@ -7,6 +7,7 @@
 #include "minecraft/hooks/actor_set_rot_hook.h"
 #include "minecraft/hooks/perspective_hook.h"
 #include "minecraft/hooks/attack_hook.h"
+#include "minecraft/hooks/block_use_hook.h"
 #include "minecraft/hooks/level_render_hook.h"
 #include "minecraft/hooks/hook_memory.h"
 #include "minecraft/bedrock_memory.h"
@@ -33,6 +34,7 @@ namespace minecraft::hooks {
                 ClientInstance::setLocalPlayer(static_cast<LocalPlayer*>(localPlayer));
                 install_actor_tick_hook(localPlayer, event.clientInstance);
                 install_attack_hook(static_cast<LocalPlayer*>(localPlayer));
+                install_block_use_hook(static_cast<LocalPlayer*>(localPlayer));
             }
         }
     }
@@ -122,6 +124,7 @@ namespace minecraft::hooks {
         remove_perspective_hook();
         remove_actor_set_rot_hook();
         remove_attack_hook();
+        remove_block_use_hook();
         remove_actor_tick_hook();
         remove_client_instance_hook();
         s_getLocalPlayerAddr = 0;
