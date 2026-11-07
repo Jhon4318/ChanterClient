@@ -206,13 +206,58 @@ bool write_png(const std::filesystem::path& file, std::uint32_t width, std::uint
     return SUCCEEDED(hr);
 }
 
+bool save_skin_image(const std::string& uuid, const std::string& name, std::uint32_t width,
+                     std::uint32_t height, const std::vector<std::uint8_t>& pixels) {
+    if (!g_captureEnabled.load(std::memory_order_acquire)) return false;
+
+    std::string target;
+    const bool filter = g_targetFilterEnabled.load(std::memory_order_acquire);
+    {
+        std::lock_guard lock(g_mutex);
+        target = g_targetUuid;
+    }
+    if (filter && normalize_uuid(target) != uuid) return false;
+
+    std::lock_guard fileLock(g_fileMutex);
+    const auto directory = get_skin_directory();
+    std::error_code ec;
+    std::filesystem::create_directories(directory, ec);
+    if (ec) {
+        LOG_ERROR("[SkinStealer] Failed to create skin directory: {}", ec.message());
+        return false;
+    }
+
+    const auto fileName = std::wstring(L"skin_") + std::wstring(uuid.begin(), uuid.end()) + L".png";
+    const auto file = directory / fileName;
+    if (!write_png(file, width, height, pixels)) {
+        LOG_INFO("[SkinStealer] Skin data received for {}, but the image could not be exported as PNG.", uuid);
+        return false;
+    }
+
+    CapturedSkin entry{ uuid, name, file, width, height };
+    {
+        std::lock_guard lock(g_mutex);
+        const auto found = std::find_if(g_skins.begin(), g_skins.end(), [&](const CapturedSkin& s) {
+            return s.uuid == uuid;
+        });
+        if (found == g_skins.end()) g_skins.push_back(std::move(entry));
+        else *found = std::move(entry);
+    }
+    LOG_INFO("[SkinStealer] Saved {} ({}) {}x{} to {}", name, uuid, width, height, file.string());
+    return true;
+}
+
 void record_player_list(std::string_view body) {
     Cursor cursor(body);
     std::uint32_t count = 0;
     if (!cursor.read_varuint32(count) || count > 4096) return;
 
-    // The player-list packet can batch many entries. We record the first Add entry
-    // in each packet; later PlayerSkin packets are paired with this UUID/name table.
+    // 1.26.60 PlayerListAddEntry:
+    // Action, UUID, ActorUniqueID, PlayerName, XUID, PlayFabID,
+    // PlatformOnlineID, BuildPlatform, SerializedSkin.
+    // The first Add entry is enough to seed the UUID/name association and capture
+    // at least one skin from a batched join packet. Standalone updates are also
+    // collected from PlayerSkinPacket (93).
     for (std::uint32_t i = 0; i < count; ++i) {
         std::uint8_t action = 0;
         if (!cursor.read_u8(action)) return;
@@ -224,10 +269,36 @@ void record_player_list(std::string_view body) {
 
         if (!cursor.read_varuint64()) return; // ActorUniqueID
         std::string name;
-        if (!cursor.read_string(name)) return;
+        std::string xuid;
+        std::string playFabId;
+        std::string platformOnlineId;
+        std::uint32_t buildPlatform = 0;
+        if (!cursor.read_string(name) ||
+            !cursor.read_string(xuid) ||
+            !cursor.read_string(playFabId) ||
+            !cursor.read_string(platformOnlineId) ||
+            !cursor.read_u32(buildPlatform)) {
+            return;
+        }
 
-        std::lock_guard lock(g_mutex);
-        g_playerNames[uuid] = name;
+        std::string skinId;
+        std::string resourcePatch;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+        std::vector<std::uint8_t> pixels;
+        if (!cursor.read_string(skinId) ||
+            !cursor.read_string(resourcePatch) ||
+            !cursor.read_image(width, height, pixels)) {
+            std::lock_guard lock(g_mutex);
+            g_playerNames[uuid] = name;
+            return;
+        }
+
+        {
+            std::lock_guard lock(g_mutex);
+            g_playerNames[uuid] = name;
+        }
+        save_skin_image(uuid, name, width, height, pixels);
         return;
     }
 }
@@ -248,49 +319,13 @@ void record_player_skin(std::string_view body) {
         return;
     }
 
-    if (!g_captureEnabled.load(std::memory_order_acquire)) return;
-
-    std::string target;
-    const bool filter = g_targetFilterEnabled.load(std::memory_order_acquire);
-    {
-        std::lock_guard lock(g_mutex);
-        target = g_targetUuid;
-    }
-    if (filter && normalize_uuid(target) != uuid) return;
-
     std::string name = "Unknown";
     {
         std::lock_guard lock(g_mutex);
         const auto found = g_playerNames.find(uuid);
         if (found != g_playerNames.end() && !found->second.empty()) name = found->second;
     }
-
-    std::lock_guard fileLock(g_fileMutex);
-    const auto directory = get_skin_directory();
-    std::error_code ec;
-    std::filesystem::create_directories(directory, ec);
-    if (ec) {
-        LOG_ERROR("[SkinStealer] Failed to create skin directory: {}", ec.message());
-        return;
-    }
-
-    const auto fileName = std::wstring(L"skin_") + std::wstring(uuid.begin(), uuid.end()) + L".png";
-    const auto file = directory / fileName;
-    if (!write_png(file, width, height, pixels)) {
-        LOG_INFO("[SkinStealer] Skin packet received for {}, but the image format could not be exported as PNG.", uuid);
-        return;
-    }
-
-    CapturedSkin entry{ uuid, name, file, width, height };
-    {
-        std::lock_guard lock(g_mutex);
-        const auto found = std::find_if(g_skins.begin(), g_skins.end(), [&](const CapturedSkin& s) {
-            return s.uuid == uuid;
-        });
-        if (found == g_skins.end()) g_skins.push_back(std::move(entry));
-        else *found = std::move(entry);
-    }
-    LOG_INFO("[SkinStealer] Saved {} ({}) {}x{} to {}", name, uuid, width, height, file.string());
+    save_skin_image(uuid, name, width, height, pixels);
 }
 
 void** get_vtable(Packet* packet) {
