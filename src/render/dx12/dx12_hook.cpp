@@ -144,7 +144,8 @@ namespace {
 
         if (keyDown && wparam == VK_ESCAPE && g_menuOpen.load()) {
             if (InputManager::instance().is_binding()) {
-                InputManager::instance().cancel_binding();
+                // Route Escape through the binding handler so it sets the key to "unbound".
+                InputManager::instance().handle_win32_message(msg, wparam, lparam);
                 return 0;
             }
             g_menuOpen.store(false);
