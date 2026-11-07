@@ -5,12 +5,6 @@
 
 namespace minecraft::sdk {
 
-struct BlockPosition {
-    std::int32_t x = 0;
-    std::int32_t y = 0;
-    std::int32_t z = 0;
-};
-
 namespace block_identity {
 
 // Reads Block::mBlockType and BlockType::NameInfo::mFullName for Bedrock 1.26.60.
