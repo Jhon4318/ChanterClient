@@ -14,6 +14,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <cctype>
 #include <filesystem>
 #include <format>
 #include <mutex>
@@ -23,6 +24,10 @@
 #include <vector>
 
 namespace minecraft::skin {
+
+Bedrock::Result<void> __fastcall hook_packet_read(Packet* self, ReadOnlyBinaryStream& stream,
+                                                   const cereal::ReflectionCtx& reflection);
+
 namespace {
 
 constexpr std::size_t kPacketReadVtableSlot = 9;
@@ -269,7 +274,8 @@ void record_player_skin(std::string_view body) {
         return;
     }
 
-    const auto file = directory / (L"skin_" + std::filesystem::path(std::wstring(uuid.begin(), uuid.end())) + L".png");
+    const auto fileName = std::wstring(L"skin_") + std::wstring(uuid.begin(), uuid.end()) + L".png";
+    const auto file = directory / fileName;
     if (!write_png(file, width, height, pixels)) {
         LOG_INFO("[SkinStealer] Skin packet received for {}, but the image format could not be exported as PNG.", uuid);
         return;
