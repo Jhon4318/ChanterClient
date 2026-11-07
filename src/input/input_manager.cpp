@@ -76,6 +76,8 @@ bool InputManager::handle_win32_message(UINT msg, WPARAM wparam, LPARAM lparam) 
 
     if (m_bindingModule && action == KeyAction::Press) {
         if (vkCode == VK_ESCAPE) {
+            // Escape explicitly clears the current assignment.
+            m_bindingModule->set_keybind(0);
             cancel_binding();
         }
         else if (vkCode == VK_DELETE || vkCode == VK_BACK) {
