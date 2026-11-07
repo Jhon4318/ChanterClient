@@ -102,6 +102,7 @@ bool ContainerTransfer::matches_item(const std::string& itemId) const {
 bool ContainerTransfer::prepare_block_use(
     const std::string& blockId, std::int32_t x,
     std::int32_t y, std::int32_t z, bool firstEvent) {
+    std::lock_guard lock(m_mutex);
     if (!enabled() || !firstEvent) return false;
 
     if (!minecraft::container_ui::available()) {
@@ -146,6 +147,7 @@ bool ContainerTransfer::prepare_block_use(
 }
 
 void ContainerTransfer::on_open_attempt_failed() {
+    std::lock_guard lock(m_mutex);
     if (m_phase == Phase::Opening) {
         LOG_WARN("[ContainerTransfer] The clicked block did not produce a capturable container screen; no items were moved.");
         reset_transfer();
@@ -154,6 +156,7 @@ void ContainerTransfer::on_open_attempt_failed() {
 }
 
 void ContainerTransfer::on_container_opened(void* controller) {
+    std::lock_guard lock(m_mutex);
     if (m_phase != Phase::Opening || controller == nullptr) {
         LOG_WARN("[ContainerTransfer] A hidden container screen arrived without a matching click transaction; closing it.");
         m_phase = Phase::Closing;
@@ -250,6 +253,7 @@ void ContainerTransfer::begin_closing(const char* reason) {
 }
 
 void ContainerTransfer::on_container_tick() {
+    std::lock_guard lock(m_mutex);
     using namespace minecraft::container_ui;
     const std::uint64_t now = GetTickCount64();
 
@@ -380,6 +384,7 @@ void ContainerTransfer::on_container_tick() {
 }
 
 void ContainerTransfer::on_container_lost() {
+    std::lock_guard lock(m_mutex);
     if (m_phase != Phase::Idle && m_phase != Phase::Closing) {
         LOG_WARN("[ContainerTransfer] The hidden container closed unexpectedly; the transfer was stopped.");
     } else if (m_phase == Phase::Closing && m_moved) {
@@ -389,6 +394,7 @@ void ContainerTransfer::on_container_lost() {
 }
 
 void ContainerTransfer::on_disable() {
+    std::lock_guard lock(m_mutex);
     if (m_phase == Phase::Opening) {
         minecraft::container_ui::cancel_pending_open();
         reset_transfer();
