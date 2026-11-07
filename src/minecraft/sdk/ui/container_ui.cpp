@@ -293,12 +293,12 @@ bool capture_offstack(void* scene, void* controller) {
     return true;
 }
 
-void __fastcall hook_screen_ctor(void* self, void* a2, void* a3, void* a4) {
+void* __fastcall hook_screen_ctor(void* self, void* a2, void* a3, void* a4) {
     void* result = g_screenCtor != nullptr ? g_screenCtor(self, a2, a3, a4) : self;
     if (t_expectedOpen && self != nullptr) {
         t_constructedController = self;
     }
-    (void)result;
+    return result;
 }
 
 void __fastcall hook_scene_stack_push(void* stack, void* scene, void* a3, void* a4) {
@@ -347,9 +347,9 @@ bool initialize() {
     if (g_initialized) return g_available;
     g_initialized = true;
 
-    g_smHandle = minecraft::hook_memory::resolve_signature(BedrockSignatures::container_sm_handle)
-        ? reinterpret_cast<ContainerSmHandleFn>(minecraft::hook_memory::resolve_signature(BedrockSignatures::container_sm_handle))
-        : nullptr;
+    const std::uintptr_t smHandle =
+        minecraft::hook_memory::resolve_signature(BedrockSignatures::container_sm_handle);
+    g_smHandle = reinterpret_cast<ContainerSmHandleFn>(smHandle);
     g_getItem = reinterpret_cast<ContainerGetItemFn>(
         minecraft::hook_memory::resolve_signature(BedrockSignatures::container_get_item));
     g_stackIsNull = reinterpret_cast<StackIsNullFn>(
