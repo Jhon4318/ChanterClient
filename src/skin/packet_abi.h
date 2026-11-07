@@ -105,7 +105,7 @@ public:
                                              std::optional<SerializationMode> override_mode) const = 0;
     virtual void write(BinaryStream& stream, const cereal::ReflectionCtx& reflection) const = 0;
     virtual void write(BinaryStream& stream) const = 0;
-    virtual Bedrock::Result<void> read(ReadOnlyBinaryStream& stream, const ReflectionCtx& reflection);
+    virtual Bedrock::Result<void> read(ReadOnlyBinaryStream& stream, const cereal::ReflectionCtx& reflection) = 0;
     virtual Bedrock::Result<void> read(ReadOnlyBinaryStream& stream) = 0;
     [[nodiscard]] virtual bool disallowBatching() const = 0;
     [[nodiscard]] virtual bool isValid() const = 0;
@@ -114,7 +114,7 @@ public:
     [[nodiscard]] virtual std::string toString() const = 0;
 
 private:
-    virtual Bedrock::Result<void> _read(ReadOnlyBinaryStream& stream, const ReflectionCtx& reflection);
+    virtual Bedrock::Result<void> _read(ReadOnlyBinaryStream& stream, const cereal::ReflectionCtx& reflection) = 0;
     virtual Bedrock::Result<void> _read(ReadOnlyBinaryStream& stream) = 0;
 
     // The game owns this object. Keep the mirrored x64 object size to 0x30.
@@ -125,5 +125,5 @@ static_assert(sizeof(Packet) == 0x30, "Bedrock 1.26.60 Packet ABI mirror changed
 
 namespace minecraft::skin {
     using CreatePacketFn = std::shared_ptr<Packet>(__fastcall*)(MinecraftPacketIds);
-    using PacketReadFn = Bedrock::Result<void>(__fastcall*)(Packet*, ReadOnlyBinaryStream&, const ReflectionCtx&);
+    using PacketReadFn = Bedrock::Result<void>(__fastcall*)(Packet*, ReadOnlyBinaryStream&, const cereal::ReflectionCtx&);
 }
