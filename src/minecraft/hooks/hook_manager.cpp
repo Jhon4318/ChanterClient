@@ -8,6 +8,7 @@
 #include "minecraft/hooks/perspective_hook.h"
 #include "minecraft/hooks/attack_hook.h"
 #include "minecraft/hooks/block_use_hook.h"
+#include "minecraft/sdk/ui/container_ui.h"
 #include "minecraft/hooks/level_render_hook.h"
 #include "minecraft/hooks/hook_memory.h"
 #include "minecraft/bedrock_memory.h"
@@ -35,6 +36,7 @@ namespace minecraft::hooks {
                 install_actor_tick_hook(localPlayer, event.clientInstance);
                 install_attack_hook(static_cast<LocalPlayer*>(localPlayer));
                 install_block_use_hook(static_cast<LocalPlayer*>(localPlayer));
+        minecraft::container_ui::tick_offstack_screen();
             }
         }
     }
@@ -44,6 +46,10 @@ namespace minecraft::hooks {
         if (MH_Initialize() != MH_OK) {
             LOG_ERROR("Failed to initialize MinHook!");
             return false;
+        }
+
+        if (!minecraft::container_ui::initialize()) {
+            LOG_WARN("ContainerTransfer hidden-screen support is unavailable; its module will remain inactive.");
         }
 
         LOG_INFO("Resolving Minecraft Bedrock v26.60 signatures...");
@@ -116,6 +122,7 @@ namespace minecraft::hooks {
 
     void shutdown() {
         LOG_INFO("Shutting down game hooks...");
+        minecraft::container_ui::shutdown();
         minecraft::skin::shutdown();
         ClientInstance::setLocalPlayer(nullptr);
         remove_screen_hook();
