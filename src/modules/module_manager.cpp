@@ -1,6 +1,8 @@
 #include "modules/module_manager.h"
 #include "input/input_manager.h"
 #include "events/key_event.h"
+#include "events/block_use_event.h"
+#include "modules/tools/ContainerTransfer.h"
 #include "events/event_bus.h"
 #include "minecraft/sdk/client/client_instance.h"
 #include "utils/logger.h"
@@ -25,7 +27,16 @@ void ModuleManager::initialize() {
     auto skinStealer = std::make_unique<SkinStealer>();
     m_modules.push_back(std::move(skinStealer));
 
+    auto containerTransfer = std::make_unique<ContainerTransfer>();
+    m_modules.push_back(std::move(containerTransfer));
+
     rebuild_categories();
+
+    EventBus::instance().subscribe<BlockUseEvent>([](BlockUseEvent& event) {
+        if (auto* module = ContainerTransfer::instance()) {
+            module->on_block_use(event);
+        }
+    });
 
     EventBus::instance().subscribe<KeyEvent>([this](KeyEvent& event) {
         if (InputManager::instance().is_binding()) return;
