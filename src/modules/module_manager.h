@@ -3,6 +3,7 @@
 #include "modules/module.h"
 #include "modules/visual/Watermark.h"
 #include "modules/tools/SkinStealer.h"
+#include "modules/tools/ContainerTransfer.h"
 
 #include <memory>
 #include <string>
