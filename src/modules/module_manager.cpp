@@ -32,7 +32,7 @@ void ModuleManager::initialize() {
 
     rebuild_categories();
 
-    EventBus::instance().subscribe<BlockUseEvent>([](BlockUseEvent& event) {
+    m_blockUseListenerId = EventBus::instance().subscribe<BlockUseEvent>([](BlockUseEvent& event) {
         if (auto* module = ContainerTransfer::instance()) {
             module->on_block_use(event);
         }
@@ -67,6 +67,10 @@ void ModuleManager::shutdown() {
         if (module && module->enabled()) {
             module->set_enabled(false);
         }
+    }
+    if (m_blockUseListenerId != 0) {
+        EventBus::instance().unsubscribe(m_blockUseListenerId);
+        m_blockUseListenerId = 0;
     }
     m_categories.clear();
     m_modules.clear();
