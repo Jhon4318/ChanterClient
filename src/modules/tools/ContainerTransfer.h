@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -60,6 +61,7 @@ private:
     bool m_inPass = false;
     bool m_moved = false;
     bool m_reportedNoProgress = false;
+    mutable std::recursive_mutex m_mutex;
 
     bool matches_block_list(const config::StringSetting* setting,
                             const std::string& blockId) const;
