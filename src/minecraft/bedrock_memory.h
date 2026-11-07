@@ -104,6 +104,28 @@ namespace minecraft {
         DEFINE_SIG(options_getPerspective, "Options::getPerspective",
             "48 83 EC ? 48 8B 05 ? ? ? ? 48 31 E0 48 89 44 24 ? 48 8B 01 48 8B 40 ? 48 8D 54 24 ? 41 B8 03 00 00 00");
 
+        // Container screen and slot state-machine signatures for Bedrock 1.26.60.
+        // These are optional: ContainerTransfer remains inactive unless every required
+        // signature and both controller offsets are resolved.
+        DEFINE_SIG(container_sm_handle, "ContainerScreen state-machine handle",
+            "41 57 41 56 41 55 41 54 56 57 55 53 48 83 EC 48 4D 89 CC 44 89 C5 89 D7 48 89 CB 48 8B 05 ? ? ? ?");
+        DEFINE_SIG(container_sm_offset_site, "ContainerScreen state-machine offset site",
+            "56 48 83 EC 30 48 8B 44 24 60 48 8B 71 08 8B 12 45 8B 00 8B 00 48 8D 8E ? ? ? ? 89 44 24 20 E8");
+        DEFINE_SIG(container_manager_offset_site, "ContainerScreen container-manager offset site",
+            "48 8B 8B ? ? ? ? 48 8B 01 48 8B 40 40 4C 89 FA FF 15");
+        DEFINE_SIG(container_get_item, "ContainerManager::getItem",
+            "55 41 57 41 56 41 55 41 54 56 57 53 48 83 EC 38 48 8D 6C 24 30 48 C7 45 00 FE FF FF FF 44 89 C6 48 89 D3 4C 8B 72 10 48 83 7A 18 10");
+        DEFINE_SIG(item_stack_is_null, "ItemStack::isNull",
+            "41 56 56 57 53 48 83 EC 28 B0 01 80 79 23 01 0F 85 ? ? ? ? 48 8B 51 08 48 85 D2 0F 84 ? ? ? ? 48 8B 32 48 85 F6 0F 84 ? ? ? ? 48 8B 96 20 01 00 00 48 3B 15 ? ? ? ? 0F 85 ? ? ? ?");
+        DEFINE_SIG(item_stack_max_stack_size, "ItemStack::getMaxStackSize",
+            "55 56 57 53 48 83 EC 38 48 8D 6C 24 30 48 C7 45 00 FE FF FF FF 48 8B 51 08 B0 FF 48 85 D2 74");
+        DEFINE_SIG(container_screen_tick, "ContainerScreenController::tick",
+            "55 41 57 41 56 41 55 41 54 56 57 53 48 81 EC C8 00 00 00 48 8D AC 24 80 00 00 00 0F 29 75 30 48 C7 45 28 FE FF FF FF 48 89 CE 48 8D B9 ? ? 00 00 C6 45 F8 00 48 81 C1 ? ? 00 00 E8");
+        DEFINE_SIG(container_screen_ctor, "ContainerScreenController constructor",
+            "55 41 57 41 56 41 55 41 54 56 57 53 B8 D8 2D 00 00 E8 ? ? ? ? 48 29 C4 48 8D AC 24 80 00 00 00 0F 29 B5 40 2D 00 00");
+        DEFINE_SIG(scene_stack_push, "SceneStack::push",
+            "55 56 48 83 EC 78 48 8D 6C 24 70 48 C7 45 00 FE FF FF FF C6 45 D8 00 0F 57 C0 0F 29 45 E0 48 8B 42 08 48 85 C0 74 ? F0 FF 40 08 48 8B 42 08 EB ? 31 C0 48 89 55 F8 48 8B 12 48 89 55 E0 48 89 45 E8 48 8D 55 E0 4C 8D 4D B0 E8");
+
         DEFINE_SIG(render_levelRender, "LevelRenderer::renderLevel",
             "E8 ? ? ? ? 31 FF 48 8B 86 ? ? 00 00 48 85 C0");
 
