@@ -4,6 +4,7 @@
 #include "config/setting.h"
 #include "minecraft/sdk/ui/container_ui.h"
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <utility>
