@@ -34,7 +34,6 @@ private:
 
     mutable std::shared_mutex m_mutex;
     bool m_initialized = false;
-    std::uint64_t m_blockUseListenerId = 0;
     std::vector<std::unique_ptr<Module>> m_modules;
     std::vector<std::string> m_categories;
 };
