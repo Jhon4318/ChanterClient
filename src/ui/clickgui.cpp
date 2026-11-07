@@ -253,7 +253,7 @@ namespace clickgui {
                 ImGui::Separator();
                 ImGui::TextColored(kMuted, "INPUT");
                 const bool binding = InputManager::instance().binding_module() == module;
-                const std::string keyLabel = binding ? "Press a key  /  ESC = UNBOUND" :
+                const std::string keyLabel = binding ? "Press a key  /  DEL = UNBOUND" :
                     (module->keybind() == 0 ? "Keybind: 未登録" : std::string("Keybind: ") + input::get_key_name(module->keybind()));
                 if (ImGui::Button(keyLabel.c_str(), ImVec2(240.0f, 32.0f))) {
                     InputManager::instance().begin_binding(module);
@@ -279,7 +279,7 @@ namespace clickgui {
             ImGui::EndChild();
 
             ImGui::Spacing();
-            ImGui::TextColored(kMuted, "ESC clears the keybind while listening  •  ESC closes the menu otherwise");
+            ImGui::TextColored(kMuted, "DEL / BACKSPACE clears the keybind  •  ESC cancels binding or closes the menu");
         }
         ImGui::End();
 
