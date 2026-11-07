@@ -51,7 +51,7 @@ namespace {
             targetBlock, isFirstEvent);
 
         // Only the initial user-input event is relevant. Simulation repeats are ignored.
-        if (isFirstEvent && position != nullptr && targetBlock != nullptr) {
+        if (result.mSuccess && isFirstEvent && position != nullptr && targetBlock != nullptr) {
             std::string blockType;
             if (minecraft::sdk::block_identity::try_get_type_name(targetBlock, blockType)) {
                 BlockUseEvent event(
