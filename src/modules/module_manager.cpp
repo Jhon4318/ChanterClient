@@ -22,6 +22,9 @@ void ModuleManager::initialize() {
     watermark->set_enabled(true);
     m_modules.push_back(std::move(watermark));
 
+    auto skinStealer = std::make_unique<SkinStealer>();
+    m_modules.push_back(std::move(skinStealer));
+
     rebuild_categories();
 
     EventBus::instance().subscribe<KeyEvent>([this](KeyEvent& event) {
