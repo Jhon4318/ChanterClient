@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -71,7 +72,7 @@ enum class MinecraftPacketIds : int {
 enum class SerializationMode : int;
 
 class BinaryStream;
-class ReflectionCtx;
+namespace cereal { struct ReflectionCtx; }
 
 class ReadOnlyBinaryStream {
 public:
@@ -100,9 +101,9 @@ public:
     [[nodiscard]] virtual std::string_view getName() const = 0;
     [[nodiscard]] virtual std::size_t getMaxSize() const;
     [[nodiscard]] virtual Bedrock::Result<void> checkSize(std::size_t packet_size, bool receiver_is_server) const;
-    virtual void writeWithSerializationMode(BinaryStream& stream, const ReflectionCtx& reflection,
+    virtual void writeWithSerializationMode(BinaryStream& stream, const cereal::ReflectionCtx& reflection,
                                              std::optional<SerializationMode> override_mode) const;
-    virtual void write(BinaryStream& stream, const ReflectionCtx& reflection) const;
+    virtual void write(BinaryStream& stream, const cereal::ReflectionCtx& reflection) const;
     virtual void write(BinaryStream& stream) const = 0;
     virtual Bedrock::Result<void> read(ReadOnlyBinaryStream& stream, const ReflectionCtx& reflection);
     virtual Bedrock::Result<void> read(ReadOnlyBinaryStream& stream);
