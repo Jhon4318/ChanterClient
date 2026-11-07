@@ -58,6 +58,7 @@ class ScreenContext;
 namespace minecraft {
 
     struct BedrockVtableSlots { 
+        DEFINE_VTABLE_SLOT(gameMode_UseItemOn, 13);
         DEFINE_VTABLE_SLOT(gameMode_Attack, 15);
     };
 
