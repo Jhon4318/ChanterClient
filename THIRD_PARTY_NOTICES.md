@@ -14,6 +14,10 @@ JhonClient uses or is derived from the following open-source projects. Dependenc
   - https://github.com/TsudaKageyu/minhook
 - **nlohmann/json 3.11.2** — MIT License.
   - https://github.com/nlohmann/json
+- **expected-lite 0.9.0** — Boost Software License 1.0.
+  - https://github.com/nonstd-lite/expected-lite
+- **Endstone Spyglass** — MIT License. Used as a public reference for the Bedrock packet read hook layout and version-specific `MinecraftPackets::createPacket` signatures; no Spyglass implementation files are copied into JhonClient.
+  - https://github.com/EndstoneMC/spyglass
 - **DirectX helper header (d3dx12.h)** — Microsoft DirectX Graphics Samples; MIT License.
   - https://github.com/microsoft/DirectX-Graphics-Samples
 
