@@ -41,8 +41,8 @@ FetchContent_Declare(
 )
 FetchContent_Declare(
     expected_lite
-    GIT_REPOSITORY https://github.com/martinmoene/expected-lite.git
-    GIT_TAG v0.8.0
+    GIT_REPOSITORY https://github.com/nonstd-lite/expected-lite.git
+    GIT_TAG v0.9.0
     GIT_SHALLOW TRUE
 )
 FetchContent_Declare(
