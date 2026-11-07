@@ -7,6 +7,8 @@
 #include "minecraft/sdk/actor/game_mode.h"
 #include "minecraft/sdk/actor/local_player.h"
 #include "minecraft/sdk/world/block_identity.h"
+#include "minecraft/sdk/ui/container_ui.h"
+#include "modules/tools/ContainerTransfer.h"
 #include "utils/logger.h"
 
 #include <MinHook.h>
@@ -45,15 +47,36 @@ namespace {
             return {};
         }
 
+        // Arm only for a configured container block, before vanilla constructs its screen.
+        // The hidden-screen bridge uses this call scope to identify the exact controller
+        // created by this user click; all other UI pushes continue through vanilla.
+        std::string blockType;
+        ContainerTransfer* transfer = ContainerTransfer::instance();
+        bool transferPrepared = false;
+        if (isFirstEvent && position != nullptr && targetBlock != nullptr && transfer != nullptr &&
+            minecraft::sdk::block_identity::try_get_type_name(targetBlock, blockType)) {
+            transferPrepared = transfer->prepare_block_use(
+                blockType, position->x, position->y, position->z, isFirstEvent);
+        }
+
         // Always preserve vanilla behavior and its return value.
         const InteractionResult result = original(
             self, itemStack, position, face, hitPosition, handSlot,
             targetBlock, isFirstEvent);
 
-        // Only the initial user-input event is relevant. Simulation repeats are ignored.
+        if (transferPrepared) {
+            const bool captured = minecraft::container_ui::complete_user_open(result.mSuccess);
+            if (!captured) {
+                transfer->on_open_attempt_failed();
+            }
+        }
+
+        // Keep the general event for other modules; repeated simulation events are ignored.
         if (result.mSuccess && isFirstEvent && position != nullptr && targetBlock != nullptr) {
-            std::string blockType;
-            if (minecraft::sdk::block_identity::try_get_type_name(targetBlock, blockType)) {
+            if (blockType.empty()) {
+                minecraft::sdk::block_identity::try_get_type_name(targetBlock, blockType);
+            }
+            if (!blockType.empty()) {
                 BlockUseEvent event(
                     std::move(blockType),
                     position->x, position->y, position->z,
