@@ -83,7 +83,7 @@ public:
     [[nodiscard]] std::string_view getView() const { return view_; }
 
 private:
-    virtual Bedrock::Result<void> read(void* target, std::uint64_t count);
+    virtual Bedrock::Result<void> read(void* target, std::uint64_t count) = 0;
 
 protected:
     std::string owned_buffer_;
@@ -99,23 +99,23 @@ public:
     virtual ~Packet() = default;
     [[nodiscard]] virtual MinecraftPacketIds getId() const = 0;
     [[nodiscard]] virtual std::string_view getName() const = 0;
-    [[nodiscard]] virtual std::size_t getMaxSize() const;
-    [[nodiscard]] virtual Bedrock::Result<void> checkSize(std::size_t packet_size, bool receiver_is_server) const;
+    [[nodiscard]] virtual std::size_t getMaxSize() const = 0;
+    [[nodiscard]] virtual Bedrock::Result<void> checkSize(std::size_t packet_size, bool receiver_is_server) const = 0;
     virtual void writeWithSerializationMode(BinaryStream& stream, const cereal::ReflectionCtx& reflection,
-                                             std::optional<SerializationMode> override_mode) const;
-    virtual void write(BinaryStream& stream, const cereal::ReflectionCtx& reflection) const;
+                                             std::optional<SerializationMode> override_mode) const = 0;
+    virtual void write(BinaryStream& stream, const cereal::ReflectionCtx& reflection) const = 0;
     virtual void write(BinaryStream& stream) const = 0;
     virtual Bedrock::Result<void> read(ReadOnlyBinaryStream& stream, const ReflectionCtx& reflection);
-    virtual Bedrock::Result<void> read(ReadOnlyBinaryStream& stream);
-    [[nodiscard]] virtual bool disallowBatching() const;
-    [[nodiscard]] virtual bool isValid() const;
-    [[nodiscard]] virtual SerializationMode getSerializationMode() const;
-    virtual void setSerializationMode(SerializationMode mode);
-    [[nodiscard]] virtual std::string toString() const;
+    virtual Bedrock::Result<void> read(ReadOnlyBinaryStream& stream) = 0;
+    [[nodiscard]] virtual bool disallowBatching() const = 0;
+    [[nodiscard]] virtual bool isValid() const = 0;
+    [[nodiscard]] virtual SerializationMode getSerializationMode() const = 0;
+    virtual void setSerializationMode(SerializationMode mode) = 0;
+    [[nodiscard]] virtual std::string toString() const = 0;
 
 private:
     virtual Bedrock::Result<void> _read(ReadOnlyBinaryStream& stream, const ReflectionCtx& reflection);
-    virtual Bedrock::Result<void> _read(ReadOnlyBinaryStream& stream);
+    virtual Bedrock::Result<void> _read(ReadOnlyBinaryStream& stream) = 0;
 
     // The game owns this object. Keep the mirrored x64 object size to 0x30.
     std::byte opaque_[40]{};
