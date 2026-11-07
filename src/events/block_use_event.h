@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 struct BlockUseEvent final : Event {
     std::string blockType;
