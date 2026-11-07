@@ -57,11 +57,11 @@ GitHub Actions でも Windows x64 ビルドを実行し、DLL を成果物とし
 
 ## ContainerTransfer
 
-ClickGUI の \`Tools\` → \`ContainerTransfer\` で有効にし、次の3項目をカンマ区切りで設定します。
+ClickGUI の `Tools` → `ContainerTransfer` で有効にし、次の3項目をカンマ区切りで設定します。
 
-- **取り出し元ブロック ID**: 例 \`minecraft:chest,minecraft:barrel\`
-- **詰め込み先ブロック ID**: 例 \`minecraft:shulker_box,minecraft:white_shulker_box\`
-- **移動アイテム ID**: 例 \`minecraft:iron_ingot,minecraft:gold_ingot\`
+- **取り出し元ブロック ID**: 例 `minecraft:chest,minecraft:barrel`
+- **詰め込み先ブロック ID**: 例 `minecraft:shulker_box,minecraft:white_shulker_box`
+- **移動アイテム ID**: 例 `minecraft:iron_ingot,minecraft:gold_ingot`
 
 設定した取り出し元コンテナを手動でクリックすると、指定アイテムをコンテナからプレイヤーインベントリへ移します。詰め込み先コンテナを手動でクリックすると、プレイヤーインベントリから指定アイテムをコンテナへ移します。コンテナ画面は表示せず、ゲーム本来のスロット操作経路で移動します。
 
@@ -73,7 +73,7 @@ ClickGUIの `Tools` → `SkinStealer` を有効にすると、受信した `Play
 
 ## 設定とログ
 
-設定とログは `%APPDATA%\JhonClient\` 以下に保存します。
+設定とログは `%APPDATA%\JhonClient` 以下に保存します。
 
 ## 技術的な土台とライセンス
 
