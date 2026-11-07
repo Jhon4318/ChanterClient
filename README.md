@@ -25,6 +25,8 @@ JhonClient は Tsukuyomi など他のクライアントに依存せず、必要�
 - JSON プロファイル
 - 必須ゲームシグネチャが見つからない場合は初期化を中止
 - 初期モジュール: JhonClient Watermark
+- Tools: SkinStealer（受信したプレイヤースキンをPNG保存、UUIDフィルター付き）
+- JhonClient独自の「Control Studio」UI（ダークスレート＋シアンアクセント）
 
 戦闘・移動など、元テンプレートに含まれていたサンプルモジュールは初期構成から除外しています。
 
@@ -39,7 +41,7 @@ cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release --parallel
 ```
 
-初回の CMake 構成時に、EnTT、libhat、MinHook、nlohmann/json を固定バージョンで取得します。初回ビルドにはインターネット接続が必要です。
+初回の CMake 構成時に、EnTT、libhat、MinHook、expected-lite、nlohmann/json を固定バージョンで取得します。初回ビルドにはインターネット接続が必要です。
 
 出力 DLL: `build/Release/JhonClient.dll`
 
@@ -50,8 +52,12 @@ GitHub Actions でも Windows x64 ビルドを実行し、DLL を成果物とし
 | キー | 操作 |
 | --- | --- |
 | Insert | ClickGUI の表示/非表示 |
-| Escape | ClickGUI を閉じる |
+| Escape | キー割り当て中は「未登録」にする。それ以外はClickGUIを閉じる |
 | End | フック解除と DLL アンロード |
+
+## SkinStealer
+
+ClickGUIの `Tools` → `SkinStealer` を有効にすると、受信した `PlayerList` / `PlayerSkin` パケットのスキン画像をPNGとして保存します。保存先は `%APPDATA%\\JhonClient\\skins` です。UUIDフィルターを有効にすると、指定UUIDに対象を絞れます。ゲームのパケット形式はMinecraft Bedrock 1.26.60（protocol 2225）を基準にしています。パケットファクトリのシグネチャが一致しないビルドでは、SkinStealerのみ初期化されず、他の機能はそのまま起動します。
 
 ## 設定とログ
 
