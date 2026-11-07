@@ -40,13 +40,19 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 FetchContent_Declare(
+    expected_lite
+    GIT_REPOSITORY https://github.com/martinmoene/expected-lite.git
+    GIT_TAG v0.8.0
+    GIT_SHALLOW TRUE
+)
+FetchContent_Declare(
     nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG v3.11.2
     GIT_SHALLOW TRUE
 )
 
-FetchContent_MakeAvailable(entt libhat minhook nlohmann_json)
+FetchContent_MakeAvailable(entt libhat minhook expected_lite nlohmann_json)
 
 # MinHook v1.3.3 does not ship a CMakeLists.txt. Build its x64 sources
 # directly instead of relying on a prebuilt library from another machine.
@@ -90,6 +96,7 @@ target_include_directories(JhonClient PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/d3d12"
     "${minhook_SOURCE_DIR}/include"
+    "${expected_lite_SOURCE_DIR}/include"
 )
 
 target_link_libraries(JhonClient PRIVATE
@@ -102,6 +109,9 @@ target_link_libraries(JhonClient PRIVATE
     d3d12
     dxgi
     Psapi
+    windowscodecs
+    ole32
+    shell32
 )
 
 target_compile_definitions(JhonClient PRIVATE
