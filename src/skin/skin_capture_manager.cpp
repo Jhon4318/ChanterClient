@@ -108,14 +108,30 @@ public:
 
     bool read_uuid(std::string& out) {
         if (remaining() < 16) return false;
+
+        // Bedrock serializes mce::UUID as two little-endian uint64 values.
+        // Emit the conventional UUID hex order so a pasted UUID can be filtered.
+        std::uint64_t mostSignificant = 0;
+        std::uint64_t leastSignificant = 0;
+        for (unsigned i = 0; i < 8; ++i) {
+            mostSignificant |= static_cast<std::uint64_t>(
+                static_cast<unsigned char>(m_bytes[m_offset++])) << (i * 8);
+        }
+        for (unsigned i = 0; i < 8; ++i) {
+            leastSignificant |= static_cast<std::uint64_t>(
+                static_cast<unsigned char>(m_bytes[m_offset++])) << (i * 8);
+        }
+
         static constexpr char hex[] = "0123456789abcdef";
         out.clear();
         out.reserve(32);
-        for (std::size_t i = 0; i < 16; ++i) {
-            const auto b = static_cast<unsigned char>(m_bytes[m_offset++]);
-            out.push_back(hex[(b >> 4) & 0xF]);
-            out.push_back(hex[b & 0xF]);
-        }
+        const auto append64 = [&](std::uint64_t value) {
+            for (int shift = 60; shift >= 0; shift -= 4) {
+                out.push_back(hex[(value >> shift) & 0xFU]);
+            }
+        };
+        append64(mostSignificant);
+        append64(leastSignificant);
         return true;
     }
 
