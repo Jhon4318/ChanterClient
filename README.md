@@ -55,6 +55,18 @@ GitHub Actions でも Windows x64 ビルドを実行し、DLL を成果物とし
 | Escape | キー割り当て中は「未登録」にする。それ以外はClickGUIを閉じる |
 | End | フック解除と DLL アンロード |
 
+## ContainerTransfer
+
+ClickGUI の \`Tools\` → \`ContainerTransfer\` で有効にし、次の3項目をカンマ区切りで設定します。
+
+- **取り出し元ブロック ID**: 例 \`minecraft:chest,minecraft:barrel\`
+- **詰め込み先ブロック ID**: 例 \`minecraft:shulker_box,minecraft:white_shulker_box\`
+- **移動アイテム ID**: 例 \`minecraft:iron_ingot,minecraft:gold_ingot\`
+
+設定した取り出し元コンテナを手動でクリックすると、指定アイテムをコンテナからプレイヤーインベントリへ移します。詰め込み先コンテナを手動でクリックすると、プレイヤーインベントリから指定アイテムをコンテナへ移します。コンテナ画面は表示せず、ゲーム本来のスロット操作経路で移動します。
+
+非表示画面の保持には Bedrock 1.26.60 のコンテナ関係シグネチャが必要です。シグネチャや画面コントローラーを検証できない場合は移動処理を実行せず、通常のコンテナ画面を開きます。満杯、カーソル上のアイテム、応答未確認、処理タイムアウトの場合は追加操作を止めます。
+
 ## SkinStealer
 
 ClickGUIの `Tools` → `SkinStealer` を有効にすると、受信した `PlayerList` / `PlayerSkin` パケットのスキン画像をPNGとして保存します。保存先は `%APPDATA%\\JhonClient\\skins` です。UUIDフィルターを有効にすると、指定UUIDに対象を絞れます。ゲームのパケット形式はMinecraft Bedrock 1.26.60（protocol 2225）を基準にしています。パケットファクトリのシグネチャが一致しないビルドでは、SkinStealerのみ初期化されず、他の機能はそのまま起動します。
