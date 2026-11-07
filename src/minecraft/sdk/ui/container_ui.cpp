@@ -456,7 +456,12 @@ bool complete_user_open(bool gameAccepted) {
     t_constructedController = nullptr;
 
     if (!gameAccepted || !captured) {
-        if (captured) release_offstack_internal();
+        // prepare_block_use refuses to start while another hidden screen is active,
+        // so any captured scene here belongs to this attempted click even if the
+        // controller was created on a different thread.
+        if (g_offstack.sceneObject != nullptr || g_offstack.sharedCounts != nullptr) {
+            release_offstack_internal();
+        }
         return false;
     }
     return true;
