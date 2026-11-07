@@ -1,7 +1,6 @@
 #include "modules/module_manager.h"
 #include "input/input_manager.h"
 #include "events/key_event.h"
-#include "events/block_use_event.h"
 #include "modules/tools/ContainerTransfer.h"
 #include "events/event_bus.h"
 #include "minecraft/sdk/client/client_instance.h"
@@ -32,12 +31,6 @@ void ModuleManager::initialize() {
 
     rebuild_categories();
 
-    m_blockUseListenerId = EventBus::instance().subscribe<BlockUseEvent>([](BlockUseEvent& event) {
-        if (auto* module = ContainerTransfer::instance()) {
-            module->on_block_use(event);
-        }
-    });
-
     EventBus::instance().subscribe<KeyEvent>([this](KeyEvent& event) {
         if (InputManager::instance().is_binding()) return;
         if (ClientInstance::isClientUiOpen() || ClientInstance::isGameUiOpen()) return;
@@ -67,10 +60,6 @@ void ModuleManager::shutdown() {
         if (module && module->enabled()) {
             module->set_enabled(false);
         }
-    }
-    if (m_blockUseListenerId != 0) {
-        EventBus::instance().unsubscribe(m_blockUseListenerId);
-        m_blockUseListenerId = 0;
     }
     m_categories.clear();
     m_modules.clear();
