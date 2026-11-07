@@ -1,4 +1,5 @@
 #include "minecraft/hooks/hook_manager.h"
+#include "skin/skin_capture_manager.h"
 #include "minecraft/hooks/client_instance_hook.h"
 #include "minecraft/hooks/grab_mouse_hook.h"
 #include "minecraft/hooks/screen_hook.h"
@@ -101,12 +102,19 @@ namespace minecraft::hooks {
             return false;
         }
 
+        // Skin packet capture is optional: a missing version-specific packet factory
+        // must not prevent the rest of the client from starting.
+        if (!minecraft::skin::initialize()) {
+            LOG_WARN("SkinStealer packet hooks are unavailable for this exact Bedrock build.");
+        }
+
         LOG_INFO("All required game hooks initialized successfully.");
         return true;
     }
 
     void shutdown() {
         LOG_INFO("Shutting down game hooks...");
+        minecraft::skin::shutdown();
         ClientInstance::setLocalPlayer(nullptr);
         remove_screen_hook();
         remove_grab_mouse_hook();
