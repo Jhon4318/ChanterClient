@@ -71,5 +71,4 @@ private:
 
     void begin_closing(const char* reason);
     void reset_transfer();
-    void finish_pass_or_continue(std::uint64_t now);
 };
