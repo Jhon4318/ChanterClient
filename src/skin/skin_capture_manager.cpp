@@ -391,16 +391,21 @@ Bedrock::Result<void> __fastcall hook_packet_read(Packet* self, ReadOnlyBinarySt
 bool initialize() {
     if (g_initialized.load(std::memory_order_acquire)) return true;
 
-    // These patterns are from the Bedrock 1.26.60 Windows release builds documented by
-    // EndstoneMC/Spyglass. Verify both packet IDs before changing any vtable entry.
+    // These exact signatures cover the documented Windows 1.26.60.5, .21, and .30
+    // builds from EndstoneMC/Spyglass. Verify both packet IDs before changing a vtable.
     constexpr std::string_view pattern_126605 =
         "56 48 83 EC 20 48 89 CE 81 FA ? 01 00 00 77 ? 89 D0 48 8D 0D ? ? ? ? "
         "48 63 04 81 48 01 C8 FF E0 0F 57 C0 0F 11 06 48 89 F0 48 83 C4 20 5E";
+    constexpr std::string_view pattern_1266021 =
+        "56 48 83 EC 30 48 89 CE 81 FA ? 01 00 00 0F 87 ? ? ? ? "
+        "89 D0 48 8D 0D ? ? ? ? 48 63 04 81 48 01 "
+        "C8 FF E0 0F 57 C0 0F 11 06 48 89 F0 48 83 C4 30 5E";
     constexpr std::string_view pattern_1266030 =
         "56 48 83 EC 30 48 89 CE 81 FA ? 01 00 00 77 ? 89 D0 48 8D 0D ? ? ? ? "
         "48 63 04 81 48 01 C8 FF E0 0F 57 C0 0F 11 06 48 89 F0 48 83 C4 30 5E";
 
     std::uintptr_t factoryAddress = minecraft::hook_memory::find_signature(pattern_126605);
+    if (!factoryAddress) factoryAddress = minecraft::hook_memory::find_signature(pattern_1266021);
     if (!factoryAddress) factoryAddress = minecraft::hook_memory::find_signature(pattern_1266030);
     if (!factoryAddress) {
         LOG_ERROR("[SkinStealer] Player packet factory signature not found; skin capture is unavailable on this client build.");
