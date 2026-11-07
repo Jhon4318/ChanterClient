@@ -3,6 +3,7 @@
 #include "events/block_use_event.h"
 #include "events/event_bus.h"
 #include "minecraft/hooks/hook_memory.h"
+#include "minecraft/bedrock_memory.h"
 #include "minecraft/sdk/actor/game_mode.h"
 #include "minecraft/sdk/actor/local_player.h"
 #include "minecraft/sdk/world/block_identity.h"
