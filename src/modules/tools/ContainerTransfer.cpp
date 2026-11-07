@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 std::atomic<ContainerTransfer*> ContainerTransfer::s_instance{nullptr};
@@ -50,7 +51,7 @@ namespace {
 
 ContainerTransfer::ContainerTransfer()
     : Module("Tools", "ContainerTransfer",
-        "取り出し元・詰め込み先ブロックと移動アイテムを指定するコンテナ転送機能。") {
+        "取り出し元・収納先とアイテムの設定。現在はクリック検出段階で、まだアイテムの移動は行いません。") {
     m_sourceBlocks = add_setting<config::StringSetting>(
         "取り出し元ブロック ID",
         "カンマ区切りで複数指定できます。例: minecraft:chest,minecraft:barrel",
@@ -96,6 +97,10 @@ void ContainerTransfer::on_block_use(const BlockUseEvent& event) {
     const bool source = matches_block_list(m_sourceBlocks, event.blockType);
     const bool destination = matches_block_list(m_destinationBlocks, event.blockType);
     if (!source && !destination) {
+        return;
+    }
+    if (source && destination) {
+        LOG_WARN("[ContainerTransfer] Block {} is configured as both source and destination; ignoring click.", event.blockType);
         return;
     }
 
