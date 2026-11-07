@@ -2,7 +2,7 @@
 
 独立型 Minecraft Bedrock Edition クライアント（Windows x64）。
 
-JhonClient は Tsukuyomi など他のクライアントに依存せず、必要な機能を独立したモジュールとして追加していく個人用プロジェクトです。
+JhonClient は必要な機能を独立したモジュールとして追加していく個人用プロジェクトです。
 
 ## 対象環境
 
