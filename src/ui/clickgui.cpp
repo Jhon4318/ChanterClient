@@ -23,15 +23,15 @@ namespace {
 
     UiState g_ui;
 
-    constexpr ImVec4 kWindowBg{ 0.035f, 0.043f, 0.060f, 0.985f };
-    constexpr ImVec4 kPanelBg{ 0.060f, 0.073f, 0.098f, 1.0f };
-    constexpr ImVec4 kRaisedBg{ 0.085f, 0.103f, 0.136f, 1.0f };
-    constexpr ImVec4 kBorder{ 0.16f, 0.19f, 0.25f, 0.9f };
-    constexpr ImVec4 kText{ 0.91f, 0.93f, 0.97f, 1.0f };
-    constexpr ImVec4 kMuted{ 0.52f, 0.58f, 0.68f, 1.0f };
-    constexpr ImVec4 kAccent{ 0.32f, 0.72f, 0.88f, 1.0f };
-    constexpr ImVec4 kAccentDim{ 0.12f, 0.28f, 0.36f, 1.0f };
-    constexpr ImVec4 kWarm{ 0.96f, 0.64f, 0.34f, 1.0f };
+    const ImVec4 kWindowBg{ 0.035f, 0.043f, 0.060f, 0.985f };
+    const ImVec4 kPanelBg{ 0.060f, 0.073f, 0.098f, 1.0f };
+    const ImVec4 kRaisedBg{ 0.085f, 0.103f, 0.136f, 1.0f };
+    const ImVec4 kBorder{ 0.16f, 0.19f, 0.25f, 0.9f };
+    const ImVec4 kText{ 0.91f, 0.93f, 0.97f, 1.0f };
+    const ImVec4 kMuted{ 0.52f, 0.58f, 0.68f, 1.0f };
+    const ImVec4 kAccent{ 0.32f, 0.72f, 0.88f, 1.0f };
+    const ImVec4 kAccentDim{ 0.12f, 0.28f, 0.36f, 1.0f };
+    const ImVec4 kWarm{ 0.96f, 0.64f, 0.34f, 1.0f };
 
     void apply_jhon_style() {
         ImGuiStyle& s = ImGui::GetStyle();
@@ -175,6 +175,7 @@ namespace clickgui {
             ImGui::TextColored(kMuted, "WORKSPACE");
             ImGui::Spacing();
             for (const auto& category : categories) {
+                if (category == "Configs") continue;
                 const bool active = g_ui.category == category;
                 if (category_button(category, active)) {
                     g_ui.category = category;
