@@ -36,7 +36,7 @@ namespace minecraft::hooks {
                 install_actor_tick_hook(localPlayer, event.clientInstance);
                 install_attack_hook(static_cast<LocalPlayer*>(localPlayer));
                 install_block_use_hook(static_cast<LocalPlayer*>(localPlayer));
-        minecraft::container_ui::tick_offstack_screen();
+                minecraft::container_ui::tick_offstack_screen();
             }
         }
     }
