@@ -14,6 +14,10 @@
 
 #include <nonstd/expected.hpp>
 
+namespace BedrockLog {
+    enum class LogAreaID : unsigned int { All = 0 };
+}
+
 namespace Bedrock {
 
 class LogLevel {
@@ -26,10 +30,6 @@ private:
     bool log_in_publish_{false};
 };
 
-namespace BedrockLog {
-    enum class LogAreaID : unsigned int { All = 0 };
-}
-
 struct CallStack {
     struct Frame {
         std::size_t filename_hash{};
@@ -39,7 +39,7 @@ struct CallStack {
     struct Context {
         std::string value;
         std::optional<LogLevel> log_level;
-        std::optional<BedrockLog::LogAreaID> log_area;
+        std::optional<::BedrockLog::LogAreaID> log_area;
     };
     struct FrameWithContext {
         Frame frame;
