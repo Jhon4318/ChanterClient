@@ -1,6 +1,7 @@
 #include "modules/tools/SkinStealer.h"
 
 #include "skin/skin_capture_manager.h"
+#include "utils/logger.h"
 
 #include <imgui.h>
 
@@ -20,11 +21,21 @@ SkinStealer::SkinStealer()
 }
 
 void SkinStealer::on_enable() {
+    // Packet vtable hooks are deliberately opt-in. Installing them during
+    // client startup caused a crash while Bedrock was processing world-join packets.
+    if (!minecraft::skin::initialize()) {
+        LOG_ERROR("[SkinStealer] Could not initialize packet hooks; the module will remain disabled.");
+        set_enabled(false);
+        return;
+    }
+
     minecraft::skin::set_capture_enabled(true);
+    LOG_INFO("[SkinStealer] Packet capture enabled.");
 }
 
 void SkinStealer::on_disable() {
     minecraft::skin::set_capture_enabled(false);
+    LOG_INFO("[SkinStealer] Packet capture paused. Installed hooks remain dormant until client shutdown.");
 }
 
 void SkinStealer::on_imgui_render() {

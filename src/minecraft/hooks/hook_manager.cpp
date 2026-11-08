@@ -106,12 +106,6 @@ namespace minecraft::hooks {
             return false;
         }
 
-        // Skin packet capture is optional: a missing version-specific packet factory
-        // must not prevent the rest of the client from starting.
-        if (!minecraft::skin::initialize()) {
-            LOG_WARN("SkinStealer packet hooks are unavailable for this exact Bedrock build.");
-        }
-
         LOG_INFO("All required game hooks initialized successfully.");
         return true;
     }

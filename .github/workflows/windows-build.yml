@@ -26,3 +26,10 @@ jobs:
           name: ChanterClient-windows-x64
           path: build/Release/ChanterClient.dll
           if-no-files-found: error
+
+      - name: Upload Debug Symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChanterClient-debug-symbols
+          path: build/Release/ChanterClient.pdb
+          if-no-files-found: error

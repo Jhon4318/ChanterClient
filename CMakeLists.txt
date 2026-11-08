@@ -128,11 +128,11 @@ set_target_properties(ChanterClient PROPERTIES
 if(MSVC)
     target_compile_options(ChanterClient PRIVATE
         /W4 /permissive- /utf-8 /Zc:preprocessor /FIWindows.h /EHa
-        $<$<CONFIG:Release>:/O2 /Ob2 /Oi /Ot /Oy /DNDEBUG>
+        $<$<CONFIG:Release>:/O2 /Ob2 /Oi /Ot /Oy /Zi /DNDEBUG>
         $<$<CONFIG:RelWithDebInfo>:/O2 /Ob2 /Oi /Ot /Oy /Zi /DNDEBUG>
     )
     target_link_options(ChanterClient PRIVATE
-        $<$<CONFIG:Release>:/OPT:REF /OPT:ICF>
+        $<$<CONFIG:Release>:/DEBUG:FULL /OPT:REF /OPT:ICF>
         $<$<CONFIG:RelWithDebInfo>:/OPT:REF /OPT:ICF /DEBUG>
     )
 endif()

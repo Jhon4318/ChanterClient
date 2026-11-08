@@ -55,6 +55,8 @@ std::vector<HookRecord> g_hooks;
 std::vector<std::shared_ptr<Packet>> g_packetKeepAlive;
 PacketReadFn g_originalPlayerList = nullptr;
 PacketReadFn g_originalPlayerSkin = nullptr;
+void** g_playerListVtable = nullptr;
+void** g_playerSkinVtable = nullptr;
 
 class Cursor {
 public:
@@ -341,8 +343,20 @@ void record_player_skin(std::string_view body) {
     save_skin_image(uuid, name, width, height, pixels);
 }
 
-void** get_vtable(Packet* packet) {
-    return packet ? *reinterpret_cast<void***>(packet) : nullptr;
+bool read_packet_vtable(Packet* packet, void*** output) noexcept {
+    if (packet == nullptr || output == nullptr) return false;
+    __try {
+        *output = *reinterpret_cast<void***>(packet);
+        return *output != nullptr;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        *output = nullptr;
+        return false;
+    }
+}
+
+void** get_vtable(Packet* packet) noexcept {
+    void** table = nullptr;
+    return read_packet_vtable(packet, &table) ? table : nullptr;
 }
 
 bool patch_packet_vtable(const std::shared_ptr<Packet>& packet, int expectedId) {
@@ -350,6 +364,15 @@ bool patch_packet_vtable(const std::shared_ptr<Packet>& packet, int expectedId) 
     void** vtable = get_vtable(packet.get());
     if (!vtable || !vtable[kPacketReadVtableSlot]) return false;
     if (vtable[kPacketReadVtableSlot] == reinterpret_cast<void*>(&hook_packet_read)) return true;
+
+    // Save the concrete packet class vtable before patching it. The read hook
+    // dispatches by this identity instead of calling getId() on the incoming
+    // packet object.
+    if (expectedId == static_cast<int>(MinecraftPacketIds::PlayerList)) {
+        g_playerListVtable = vtable;
+    } else if (expectedId == static_cast<int>(MinecraftPacketIds::PlayerSkin)) {
+        g_playerSkinVtable = vtable;
+    }
 
     DWORD oldProtect = 0;
     void** slot = &vtable[kPacketReadVtableSlot];
@@ -374,10 +397,24 @@ bool patch_packet_vtable(const std::shared_ptr<Packet>& packet, int expectedId) 
 
 Bedrock::Result<void> __fastcall hook_packet_read(Packet* self, ReadOnlyBinaryStream& stream,
                                                    const cereal::ReflectionCtx& reflection) {
-    const int packetId = self ? static_cast<int>(self->getId()) : -1;
+    void** incomingVtable = nullptr;
+    if (!read_packet_vtable(self, &incomingVtable)) {
+        static std::atomic_bool warnedInvalidPacket{ false };
+        if (!warnedInvalidPacket.exchange(true, std::memory_order_acq_rel)) {
+            LOG_WARN("[SkinStealer] Ignored a packet-read call with an unreadable packet/vtable pointer.");
+        }
+        return Bedrock::Result<void>{};
+    }
+
+    int packetId = -1;
     PacketReadFn original = nullptr;
-    if (packetId == static_cast<int>(MinecraftPacketIds::PlayerList)) original = g_originalPlayerList;
-    if (packetId == static_cast<int>(MinecraftPacketIds::PlayerSkin)) original = g_originalPlayerSkin;
+    if (incomingVtable == g_playerListVtable) {
+        packetId = static_cast<int>(MinecraftPacketIds::PlayerList);
+        original = g_originalPlayerList;
+    } else if (incomingVtable == g_playerSkinVtable) {
+        packetId = static_cast<int>(MinecraftPacketIds::PlayerSkin);
+        original = g_originalPlayerSkin;
+    }
     if (!original) return Bedrock::Result<void>{};
 
     std::string body;
@@ -453,6 +490,8 @@ bool initialize() {
         g_packetKeepAlive.clear();
         g_originalPlayerList = nullptr;
         g_originalPlayerSkin = nullptr;
+        g_playerListVtable = nullptr;
+        g_playerSkinVtable = nullptr;
         LOG_ERROR("[SkinStealer] Could not install the player packet hooks. Capture disabled.");
         return false;
     }
@@ -478,6 +517,8 @@ void shutdown() {
     g_packetKeepAlive.clear();
     g_originalPlayerList = nullptr;
     g_originalPlayerSkin = nullptr;
+    g_playerListVtable = nullptr;
+    g_playerSkinVtable = nullptr;
     g_playerNames.clear();
     g_initialized.store(false, std::memory_order_release);
     LOG_INFO("[SkinStealer] Player packet hooks removed.");
