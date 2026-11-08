@@ -212,7 +212,7 @@ namespace clickgui {
             // Middle index: searchable module list.
             ImGui::BeginChild("##module_index", ImVec2(listWidth, bodyHeight), true);
             if (g_ui.category == "Configs") {
-                ImGui::TextColored(kAccent, "PROFILES");
+                ImGui::TextColored(kAccent, "プロファイル");
                 ImGui::TextColored(kMuted, "保存済み設定");
             } else {
                 ImGui::TextColored(kAccent, "機能一覧");
