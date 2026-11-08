@@ -1,13 +1,18 @@
 #include "modules/tools/ContainerTransfer.h"
 
 #include "minecraft/sdk/ui/container_ui.h"
+#include "modules/tools/vanilla_item_ids.h"
 #include "utils/logger.h"
+
+#include <imgui.h>
 
 #include <Windows.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -428,4 +433,326 @@ void ContainerTransfer::reset_transfer() {
     m_inPass = false;
     m_moved = false;
     m_reportedNoProgress = false;
+}
+
+
+namespace {
+    struct ContainerOption {
+        std::string_view id;
+        std::string_view label;
+        std::string_view group;
+    };
+
+    constexpr ContainerOption kContainerOptions[] = {
+        {"minecraft:chest", "チェスト", "チェスト・収納箱"},
+        {"minecraft:trapped_chest", "トラップチェスト", "チェスト・収納箱"},
+        {"minecraft:barrel", "樽", "チェスト・収納箱"},
+        {"minecraft:ender_chest", "エンダーチェスト", "チェスト・収納箱"},
+        {"minecraft:hopper", "ホッパー", "レッドストーン系"},
+        {"minecraft:dispenser", "ディスペンサー", "レッドストーン系"},
+        {"minecraft:dropper", "ドロッパー", "レッドストーン系"},
+        {"minecraft:crafter", "自動作業台", "レッドストーン系"},
+        {"minecraft:furnace", "かまど", "かまど・醸造"},
+        {"minecraft:blast_furnace", "溶鉱炉", "かまど・醸造"},
+        {"minecraft:smoker", "燻製器", "かまど・醸造"},
+        {"minecraft:brewing_stand", "醸造台", "かまど・醸造"},
+        {"minecraft:undyed_shulker_box", "無色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:shulker_box", "シュルカーボックス", "シュルカーボックス"},
+        {"minecraft:white_shulker_box", "白色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:orange_shulker_box", "橙色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:magenta_shulker_box", "赤紫色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:light_blue_shulker_box", "空色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:yellow_shulker_box", "黄色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:lime_shulker_box", "黄緑色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:pink_shulker_box", "桃色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:gray_shulker_box", "灰色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:light_gray_shulker_box", "薄灰色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:cyan_shulker_box", "青緑色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:purple_shulker_box", "紫色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:blue_shulker_box", "青色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:brown_shulker_box", "茶色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:green_shulker_box", "緑色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:red_shulker_box", "赤色のシュルカーボックス", "シュルカーボックス"},
+        {"minecraft:black_shulker_box", "黒色のシュルカーボックス", "シュルカーボックス"}
+    };
+
+    bool contains_id(const std::vector<std::string>& values, std::string_view id) {
+        return std::find_if(values.begin(), values.end(),
+            [id](const std::string& value) { return value == id; }) != values.end();
+    }
+
+    void remove_id(std::vector<std::string>& values, std::string_view id) {
+        values.erase(std::remove_if(values.begin(), values.end(),
+            [id](const std::string& value) { return value == id; }), values.end());
+    }
+
+    std::string join_ids(const std::vector<std::string>& values) {
+        std::string result;
+        for (const auto& value : values) {
+            if (!result.empty()) result += ',';
+            result += value;
+        }
+        return result;
+    }
+
+    bool is_known_container(std::string_view id) {
+        return std::any_of(std::begin(kContainerOptions), std::end(kContainerOptions),
+            [id](const ContainerOption& option) { return option.id == id; });
+    }
+
+    void render_container_selector(
+        const char* label,
+        const char* widgetId,
+        config::StringSetting* setting,
+        config::StringSetting* oppositeSetting)
+    {
+        if (setting == nullptr) return;
+
+        const auto selected = parse_id_list(setting->value());
+        const std::string preview = selected.empty()
+            ? "コンテナを選択..."
+            : std::to_string(selected.size()) + " 種類を選択中";
+
+        ImGui::TextUnformatted(label);
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::PushID(widgetId);
+        if (ImGui::BeginCombo("##container_types", preview.c_str())) {
+            ImGui::TextDisabled("チェックを付けた種類をすべて対象にします。");
+            std::string lastGroup;
+
+            for (const auto& option : kContainerOptions) {
+                if (lastGroup != option.group) {
+                    if (!lastGroup.empty()) ImGui::Separator();
+                    ImGui::TextDisabled("%s", option.group.data());
+                    lastGroup.assign(option.group);
+                }
+
+                bool checked = contains_id(selected, option.id);
+                ImGui::PushID(option.id.data());
+                if (ImGui::Checkbox(option.label.data(), &checked)) {
+                    auto values = parse_id_list(setting->value());
+                    if (checked) {
+                        if (!contains_id(values, option.id)) values.emplace_back(option.id);
+                        // One block type must not be both a source and a destination.
+                        if (oppositeSetting != nullptr) {
+                            auto opposite = parse_id_list(oppositeSetting->value());
+                            remove_id(opposite, option.id);
+                            oppositeSetting->set_value(join_ids(opposite));
+                        }
+                    } else {
+                        remove_id(values, option.id);
+                    }
+                    setting->set_value(join_ids(values));
+                }
+                ImGui::PopID();
+            }
+
+            const auto current = parse_id_list(setting->value());
+            bool hasCustom = false;
+            for (const auto& id : current) {
+                if (!is_known_container(id)) {
+                    if (!hasCustom) {
+                        ImGui::Separator();
+                        ImGui::TextDisabled("保存済みのカスタムID");
+                        hasCustom = true;
+                    }
+                    bool checked = true;
+                    ImGui::PushID(id.c_str());
+                    if (ImGui::Checkbox(id.c_str(), &checked) && !checked) {
+                        auto values = parse_id_list(setting->value());
+                        remove_id(values, id);
+                        setting->set_value(join_ids(values));
+                    }
+                    ImGui::PopID();
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::PopID();
+    }
+
+    bool valid_resource_id(std::string_view id) {
+        const std::size_t colon = id.find(':');
+        if (colon == std::string_view::npos || colon == 0 ||
+            colon + 1 >= id.size() || id.find(':', colon + 1) != std::string_view::npos) {
+            return false;
+        }
+        for (const unsigned char ch : id) {
+            if (!(std::isalnum(ch) || ch == '_' || ch == '-' || ch == '.' ||
+                  ch == '/' || ch == ':')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    std::vector<std::string_view> item_suggestions(std::string_view query, std::size_t limit) {
+        std::string needle(query);
+        std::transform(needle.begin(), needle.end(), needle.begin(),
+            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        needle.erase(needle.begin(), std::find_if(needle.begin(), needle.end(),
+            [](unsigned char ch) { return !std::isspace(ch); }));
+        while (!needle.empty() && std::isspace(static_cast<unsigned char>(needle.back()))) {
+            needle.pop_back();
+        }
+
+        std::vector<std::string_view> matches;
+        if (needle.empty()) return matches;
+
+        const bool qualified = needle.find(':') != std::string::npos;
+        for (const auto id : container_transfer_data::kVanillaItemIds) {
+            const std::string_view candidate = qualified ? id : id.substr(std::string_view("minecraft:").size());
+            if (candidate.starts_with(needle)) {
+                matches.push_back(id);
+                if (limit != 0 && matches.size() >= limit) break;
+            }
+        }
+        return matches;
+    }
+
+    struct ItemCompletionCycle {
+        std::string baseQuery;
+        std::string lastCompletion;
+        std::size_t nextIndex = 0;
+    };
+
+    int complete_item_on_tab(ImGuiInputTextCallbackData* data) {
+        auto* cycle = static_cast<ItemCompletionCycle*>(data->UserData);
+        if (cycle == nullptr) return 0;
+
+        const std::string current(data->Buf, static_cast<std::size_t>(data->BufTextLen));
+        if (current != cycle->lastCompletion) {
+            cycle->baseQuery = current;
+            cycle->lastCompletion.clear();
+            cycle->nextIndex = 0;
+        }
+
+        const auto matches = item_suggestions(cycle->baseQuery, 0);
+        if (matches.empty()) return 0;
+
+        const std::string completed(matches[cycle->nextIndex % matches.size()]);
+        ++cycle->nextIndex;
+        cycle->lastCompletion = completed;
+        data->DeleteChars(0, data->BufTextLen);
+        data->InsertChars(0, completed.c_str());
+        return 0;
+    }
+
+    void set_item_search(char* buffer, std::size_t capacity, const std::string& value,
+                         ItemCompletionCycle& cycle) {
+        strncpy_s(buffer, capacity, value.c_str(), _TRUNCATE);
+        cycle = ItemCompletionCycle{};
+    }
+
+    bool add_item_from_search(config::StringSetting* setting, const char* input) {
+        if (setting == nullptr || input == nullptr || *input == '\0') return false;
+
+        const auto matches = item_suggestions(input, 1);
+        std::string id = normalize_id(input);
+        if (!matches.empty() && matches.front() != id) {
+            id.assign(matches.front());
+        }
+        if (!valid_resource_id(id)) return false;
+
+        auto selected = parse_id_list(setting->value());
+        if (!contains_id(selected, id)) selected.push_back(std::move(id));
+        setting->set_value(join_ids(selected));
+        return true;
+    }
+
+    void render_item_picker(config::StringSetting* setting) {
+        if (setting == nullptr) return;
+
+        static char searchBuffer[160]{};
+        static ItemCompletionCycle completionCycle{};
+
+        ImGui::TextUnformatted("移動するアイテム");
+        ImGui::SetNextItemWidth(-1.0f);
+        const bool submitted = ImGui::InputTextWithHint(
+            "##item_id_search",
+            "例: iron_ingot / minecraft:diamond ... (Tabで補完)",
+            searchBuffer,
+            sizeof(searchBuffer),
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackCompletion,
+            complete_item_on_tab,
+            &completionCycle);
+
+        if (submitted && add_item_from_search(setting, searchBuffer)) {
+            set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
+        }
+
+        const auto suggestions = item_suggestions(searchBuffer, 9);
+        if (searchBuffer[0] != '\0' && !suggestions.empty()) {
+            const auto allMatches = item_suggestions(searchBuffer, 0);
+            ImGui::TextDisabled("%zu 件の候補があります。Tabで順番に補完できます。", allMatches.size());
+            if (ImGui::BeginChild("##item_suggestions", ImVec2(0, 126), true)) {
+                for (const auto suggestion : suggestions) {
+                    const std::string text(suggestion);
+                    if (ImGui::Selectable(text.c_str(), false)) {
+                        if (add_item_from_search(setting, text.c_str())) {
+                            set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
+                        }
+                    }
+                }
+            }
+            ImGui::EndChild();
+        } else if (searchBuffer[0] != '\0') {
+            ImGui::TextDisabled("候補がありません。アドオンのIDも手入力で追加できます。");
+        } else {
+            ImGui::TextDisabled("IDの一部を入力すると候補が表示されます。");
+        }
+
+        if (ImGui::Button("入力したIDを追加", ImVec2(150.0f, 30.0f))) {
+            if (add_item_from_search(setting, searchBuffer)) {
+                set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("すべて解除", ImVec2(105.0f, 30.0f))) {
+            setting->set_value("");
+        }
+
+        const auto selected = parse_id_list(setting->value());
+        ImGui::Spacing();
+        ImGui::Text("登録済みアイテム (%zu)", selected.size());
+        if (ImGui::BeginChild("##selected_item_ids", ImVec2(0, 105), true)) {
+            if (selected.empty()) {
+                ImGui::TextDisabled("アイテムが登録されていません。");
+            } else {
+                for (const auto& id : selected) {
+                    ImGui::PushID(id.c_str());
+                    ImGui::TextUnformatted(id.c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("削除")) {
+                        auto values = parse_id_list(setting->value());
+                        remove_id(values, id);
+                        setting->set_value(join_ids(values));
+                    }
+                    ImGui::PopID();
+                }
+            }
+        }
+        ImGui::EndChild();
+    }
+}
+
+void ContainerTransfer::on_settings_render() {
+    ImGui::TextWrapped("指定したコンテナを自分でクリックすると、選択アイテムを一括で回収または収納します。コンテナ画面は表示しません。");
+    ImGui::Spacing();
+    ImGui::Separator();
+
+    render_container_selector("取り出し元（コンテナ → インベントリ）", "source",
+                              m_sourceBlocks, m_destinationBlocks);
+    ImGui::Spacing();
+    render_container_selector("収納先（インベントリ → コンテナ）", "destination",
+                              m_destinationBlocks, m_sourceBlocks);
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    render_item_picker(m_itemIds);
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextDisabled("同じ種類のコンテナを選び直すと、もう一方の欄から自動的に外れます。");
+    ImGui::TextDisabled("設定後にContainerTransferを有効化し、対象コンテナを自分でクリックしてください。");
 }

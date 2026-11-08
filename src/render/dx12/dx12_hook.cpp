@@ -216,6 +216,44 @@ namespace {
         ui::apply_theme();
     }
 
+    void configure_imgui_fonts(ImGuiIO& io) {
+        const char* latinFont = "C:\\Windows\\Fonts\\segoeui.ttf";
+        if (!std::filesystem::exists(latinFont) ||
+            io.Fonts->AddFontFromFileTTF(latinFont, 22.0f) == nullptr) {
+            io.Fonts->AddFontDefault();
+        }
+
+        // ImGui's stb_truetype loader supports TrueType Collections (TTC).
+        // Merge a Japanese face into the existing Latin font so the panel can
+        // render Japanese labels and module descriptions.
+        const char* japaneseFonts[] = {
+            "C:\\Windows\\Fonts\\YuGothR.ttc",
+            "C:\\Windows\\Fonts\\meiryo.ttc",
+            "C:\\Windows\\Fonts\\msgothic.ttc",
+            "C:\\Windows\\Fonts\\YuGothM.ttc"
+        };
+
+        bool japaneseLoaded = false;
+        for (const char* path : japaneseFonts) {
+            if (!std::filesystem::exists(path)) continue;
+
+            ImFontConfig config{};
+            config.MergeMode = true;
+            config.FontNo = 0;
+            config.PixelSnapH = true;
+            if (io.Fonts->AddFontFromFileTTF(
+                    path, 22.0f, &config, io.Fonts->GetGlyphRangesJapanese()) != nullptr) {
+                LOG_INFO("Loaded Japanese UI font: {}", path);
+                japaneseLoaded = true;
+                break;
+            }
+        }
+
+        if (!japaneseLoaded) {
+            LOG_WARN("No Japanese Windows font was found. Japanese ClickGUI labels may not render.");
+        }
+    }
+
     void release_frame_resources_dx12() {
         wait_for_overlay_work();
 
@@ -434,10 +472,7 @@ namespace {
         ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-        static const char* fontPath = "C:\\Windows\\Fonts\\segoeui.ttf";
-        if (std::filesystem::exists(fontPath)) {
-            io.Fonts->AddFontFromFileTTF(fontPath, 22.0f);
-        }
+        configure_imgui_fonts(io);
 
         apply_overlay_style();
         ui_settings::reset_ui_scale_cache();
@@ -493,10 +528,7 @@ namespace {
         ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-        static const char* fontPath = "C:\\Windows\\Fonts\\segoeui.ttf";
-        if (std::filesystem::exists(fontPath)) {
-            io.Fonts->AddFontFromFileTTF(fontPath, 22.0f);
-        }
+        configure_imgui_fonts(io);
 
         apply_overlay_style();
         ui_settings::reset_ui_scale_cache();

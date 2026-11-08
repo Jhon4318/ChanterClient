@@ -30,6 +30,7 @@ public:
 
     void on_enable() override;
     void on_disable() override;
+    void on_settings_render() override;
 
 private:
     enum class Direction {
