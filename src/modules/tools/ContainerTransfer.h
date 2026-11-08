@@ -28,6 +28,7 @@ public:
     void on_container_tick() override;
     void on_container_lost() override;
 
+    void on_enable() override;
     void on_disable() override;
 
 private:

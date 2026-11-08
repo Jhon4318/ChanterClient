@@ -393,6 +393,20 @@ void ContainerTransfer::on_container_lost() {
     reset_transfer();
 }
 
+void ContainerTransfer::on_enable() {
+    // Install version-specific container hooks only when the user explicitly
+    // enables this module. The bridge must not intercept global scene changes
+    // during ordinary world loading while ContainerTransfer is inactive.
+    if (minecraft::container_ui::available()) {
+        return;
+    }
+
+    if (!minecraft::container_ui::initialize()) {
+        LOG_ERROR("[ContainerTransfer] Could not initialize the hidden-container bridge; disabling the module.");
+        set_enabled(false);
+    }
+}
+
 void ContainerTransfer::on_disable() {
     std::lock_guard lock(m_mutex);
     if (m_phase == Phase::Opening) {

@@ -48,10 +48,6 @@ namespace minecraft::hooks {
             return false;
         }
 
-        if (!minecraft::container_ui::initialize()) {
-            LOG_WARN("ContainerTransfer hidden-screen support is unavailable; its module will remain inactive.");
-        }
-
         LOG_INFO("Resolving Minecraft Bedrock v26.60 signatures...");
 
         const std::uintptr_t updateAddr = hook_memory::resolve_signature(BedrockSignatures::clientInstance_Update);
@@ -122,6 +118,7 @@ namespace minecraft::hooks {
 
     void shutdown() {
         LOG_INFO("Shutting down game hooks...");
+        remove_block_use_hook();
         minecraft::container_ui::shutdown();
         minecraft::skin::shutdown();
         ClientInstance::setLocalPlayer(nullptr);
@@ -131,7 +128,6 @@ namespace minecraft::hooks {
         remove_perspective_hook();
         remove_actor_set_rot_hook();
         remove_attack_hook();
-        remove_block_use_hook();
         remove_actor_tick_hook();
         remove_client_instance_hook();
         s_getLocalPlayerAddr = 0;
