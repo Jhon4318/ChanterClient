@@ -59,7 +59,7 @@ inline std::filesystem::path client_data_directory(
     const std::filesystem::path& subdirectory,
     const std::filesystem::path& fallbackBase) {
     const wchar_t* appData = _wgetenv(L"APPDATA");
-    if (appData == nullptr || *appData == L'\\0') {
+    if (appData == nullptr || *appData == L'\0') {
         return fallbackBase / subdirectory;
     }
 
