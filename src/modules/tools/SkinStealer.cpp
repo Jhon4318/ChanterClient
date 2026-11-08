@@ -46,7 +46,7 @@ void SkinStealer::on_settings_render() {
     if (ImGui::Button("OPEN SKIN LIBRARY FOLDER", ImVec2(240.0f, 32.0f))) {
         minecraft::skin::open_skins_directory();
     }
-    ImGui::TextDisabled("保存先: %%APPDATA%%\\JhonClient\\skins");
+    ImGui::TextDisabled("保存先: %%APPDATA%%\\ChanterClient\\skins");
     if (skins.empty()) {
         ImGui::TextDisabled("まだ保存されたスキンはありません。");
     } else {

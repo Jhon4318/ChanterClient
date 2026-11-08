@@ -11,7 +11,7 @@ DWORD WINAPI main_thread(LPVOID param) {
         Sleep(50);
     }
 
-    LOG_INFO("END pressed. Removing hooks and unloading JhonClient...");
+    LOG_INFO("END pressed. Removing hooks and unloading ChanterClient...");
     Client::instance().shutdown();
 
     // Give the render hook a brief opportunity to leave its current callback.

@@ -23,7 +23,7 @@ class Logger {
 public:
     static Logger& instance();
 
-    void initialize(const std::string& clientName = "MCBE_ModBase", bool enableConsole = true, bool enableFile = true);
+    void initialize(const std::string& clientName = "ChanterClient", bool enableConsole = true, bool enableFile = true);
     void shutdown();
 
     void set_level(LogLevel level) { m_minLevel = level; }

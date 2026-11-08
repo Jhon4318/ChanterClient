@@ -2,7 +2,7 @@
 
 ## 目的
 
-Minecraft Bedrock 1.26.60 / JhonClient に、プレイヤーがコンテナブロックを手動でクリックしたときだけ動作する一括アイテム移動機能を追加する。
+Minecraft Bedrock 1.26.60 / ChanterClient に、プレイヤーがコンテナブロックを手動でクリックしたときだけ動作する一括アイテム移動機能を追加する。
 
 - **取り出し元**: 指定したブロック種類をクリックすると、指定アイテムをコンテナからプレイヤーのインベントリへ回収する。
 - **詰め込み先**: 指定したブロック種類をクリックすると、指定アイテムをプレイヤーのインベントリからコンテナへ収納する。
@@ -24,9 +24,9 @@ Minecraft Bedrock 1.26.60 / JhonClient に、プレイヤーがコンテナブ�
 
 注意: 参考 `ShulkerStore.cpp` は、登録した座標のシュルカーへ、プレイヤーインベントリ内の対象アイテムを自動収納する一方向機能である。今回必要な手動クリック起動・取り出し・収納先切り替えは別途実装する。
 
-## JhonClient 現状の不足
+## ChanterClient 現状の不足
 
-現行 JhonClient には DirectX / ImGui のモジュール基盤、ClientInstance / LocalPlayer / GameMode の一部 SDK、MinHook がある。一方で以下が未実装:
+現行 ChanterClient には DirectX / ImGui のモジュール基盤、ClientInstance / LocalPlayer / GameMode の一部 SDK、MinHook がある。一方で以下が未実装:
 
 - GameMode の block-use interaction hook
 - Block / BlockType の安全な識別
@@ -42,7 +42,7 @@ Minecraft Bedrock 1.26.60 / JhonClient に、プレイヤーがコンテナブ�
 
 LeviLamina の Bedrock SDK 定義では、GameMode の virtual function 順で `useItemOn` は slot 13。メソッド引数は ItemStack、BlockPos、face、hit Vec3、HandSlot、対象 Block、first-event flag。戻り値 `InteractionResult` は success / swing の bit field である。
 
-JhonClient の GameMode 宣言は古い簡略形なので、フックを追加する前に vtable と呼び出し規約を 1.26.60 実行ファイルで照合する。first-event の手動入力のみを対象にし、simulation tick による重複処理はしない。
+ChanterClient の GameMode 宣言は古い簡略形なので、フックを追加する前に vtable と呼び出し規約を 1.26.60 実行ファイルで照合する。first-event の手動入力のみを対象にし、simulation tick による重複処理はしない。
 
 Block SDK の公開定義では Block の `mBlockType` が `mComponents` の後にある。実装では型名の取得に未検証のオフセットを無条件使用せず、メモリ検査・対象 build 固有の layout 検証を通す。失敗時は通常のゲーム操作を妨げず、ContainerTransfer を実行しない。
 
@@ -77,7 +77,7 @@ Tools カテゴリに独立した `ContainerTransfer` module を追加する。
 2. 手動クリック対象の capture hook を追加する。
 3. ContainerScreen ctor / tick / scene stack の exact signature と呼び出し経路を特定する。
 4. 対象 screen だけ off-stack に保持し、controller を tick できるようにする。
-5. ContainerUi の必要最小 API（collections, slots, cursor, click, prediction status）を JhonClient に実装する。
+5. ContainerUi の必要最小 API（collections, slots, cursor, click, prediction status）を ChanterClient に実装する。
 6. source withdrawal / destination deposit を別々の pass として実装する。
 7. offline compile、Actions build、Minecraft 1.26.60 の実機テストで source / destination / full inventory / full container / timeout / unrelated screen を確認する。
 

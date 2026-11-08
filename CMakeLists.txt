@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.23)
-project(JhonClient LANGUAGES CXX)
+project(ChanterClient LANGUAGES CXX)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
@@ -78,19 +78,19 @@ endif()
 
 add_subdirectory(external/imgui)
 
-file(GLOB_RECURSE JHONCLIENT_SOURCES CONFIGURE_DEPENDS
+file(GLOB_RECURSE CHANTERCLIENT_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
-file(GLOB_RECURSE JHONCLIENT_HEADERS CONFIGURE_DEPENDS
+file(GLOB_RECURSE CHANTERCLIENT_HEADERS CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
 )
 
-add_library(JhonClient SHARED
-    ${JHONCLIENT_SOURCES}
-    ${JHONCLIENT_HEADERS}
+add_library(ChanterClient SHARED
+    ${CHANTERCLIENT_SOURCES}
+    ${CHANTERCLIENT_HEADERS}
 )
 
-target_include_directories(JhonClient PRIVATE
+target_include_directories(ChanterClient PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/external"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui"
@@ -99,7 +99,7 @@ target_include_directories(JhonClient PRIVATE
     "${expected_lite_SOURCE_DIR}/include"
 )
 
-target_link_libraries(JhonClient PRIVATE
+target_link_libraries(ChanterClient PRIVATE
     imgui
     minhook
     libhat::libhat
@@ -114,30 +114,30 @@ target_link_libraries(JhonClient PRIVATE
     shell32
 )
 
-target_compile_definitions(JhonClient PRIVATE
+target_compile_definitions(ChanterClient PRIVATE
     WIN32_LEAN_AND_MEAN
     NOMINMAX
 )
 
-set_target_properties(JhonClient PROPERTIES
+set_target_properties(ChanterClient PROPERTIES
     CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
-    OUTPUT_NAME "JhonClient"
+    OUTPUT_NAME "ChanterClient"
 )
 
 if(MSVC)
-    target_compile_options(JhonClient PRIVATE
+    target_compile_options(ChanterClient PRIVATE
         /W4 /permissive- /utf-8 /Zc:preprocessor /FIWindows.h /EHa
         $<$<CONFIG:Release>:/O2 /Ob2 /Oi /Ot /Oy /DNDEBUG>
         $<$<CONFIG:RelWithDebInfo>:/O2 /Ob2 /Oi /Ot /Oy /Zi /DNDEBUG>
     )
-    target_link_options(JhonClient PRIVATE
+    target_link_options(ChanterClient PRIVATE
         $<$<CONFIG:Release>:/OPT:REF /OPT:ICF>
         $<$<CONFIG:RelWithDebInfo>:/OPT:REF /OPT:ICF /DEBUG>
     )
 endif()
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "Source" FILES
-    ${JHONCLIENT_SOURCES}
-    ${JHONCLIENT_HEADERS}
+    ${CHANTERCLIENT_SOURCES}
+    ${CHANTERCLIENT_HEADERS}
 )

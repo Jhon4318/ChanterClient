@@ -1,4 +1,5 @@
 #include "utils/logger.h"
+#include "utils/client_paths.h"
 #include <chrono>
 #include <iostream>
 #include <cstdlib>
@@ -75,14 +76,7 @@ Logger& Logger::instance() {
 }
 
 std::filesystem::path Logger::get_log_directory() const {
-    char* appdata = nullptr;
-    size_t len = 0;
-    if (_dupenv_s(&appdata, &len, "APPDATA") == 0 && appdata != nullptr) {
-        std::filesystem::path path = std::filesystem::path(appdata) / "JhonClient" / "logs";
-        free(appdata);
-        return path;
-    }
-    return std::filesystem::current_path() / "logs";
+    return utils::client_data_directory(L"logs", std::filesystem::current_path());
 }
 
 void Logger::initialize(const std::string& clientName, bool enableConsole, bool enableFile) {

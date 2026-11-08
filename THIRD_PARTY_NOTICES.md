@@ -1,6 +1,6 @@
 # Third-party notices
 
-JhonClient uses or is derived from the following open-source projects. Dependency versions are pinned in `CMakeLists.txt`.
+ChanterClient uses or is derived from the following open-source projects. Dependency versions are pinned in `CMakeLists.txt`.
 
 - **MCBE_DX12_ModBase** by Binary01 — MIT License. The initial internal-client architecture and Minecraft SDK integration are adapted from this project. The original copyright notice is retained in `LICENSE`.
   - https://github.com/b01dev/MCBE_DX12_ModBase
@@ -16,7 +16,7 @@ JhonClient uses or is derived from the following open-source projects. Dependenc
   - https://github.com/nlohmann/json
 - **expected-lite 0.9.0** — Boost Software License 1.0.
   - https://github.com/nonstd-lite/expected-lite
-- **Endstone Spyglass** — MIT License. Used as a public reference for the Bedrock packet read hook layout and version-specific `MinecraftPackets::createPacket` signatures; no Spyglass implementation files are copied into JhonClient.
+- **Endstone Spyglass** — MIT License. Used as a public reference for the Bedrock packet read hook layout and version-specific `MinecraftPackets::createPacket` signatures; no Spyglass implementation files are copied into ChanterClient.
   - https://github.com/EndstoneMC/spyglass
 - **DirectX helper header (d3dx12.h)** — Microsoft DirectX Graphics Samples; MIT License.
   - https://github.com/microsoft/DirectX-Graphics-Samples

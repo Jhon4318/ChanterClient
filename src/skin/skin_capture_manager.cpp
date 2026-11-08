@@ -3,6 +3,7 @@
 
 #include "minecraft/hooks/hook_memory.h"
 #include "utils/logger.h"
+#include "utils/client_paths.h"
 
 #include <Windows.h>
 #include <wincodec.h>
@@ -169,11 +170,7 @@ std::string normalize_uuid(std::string value) {
 }
 
 std::filesystem::path get_skin_directory() {
-    const wchar_t* appData = _wgetenv(L"APPDATA");
-    const std::filesystem::path base = (appData && *appData)
-        ? std::filesystem::path(appData)
-        : std::filesystem::temp_directory_path();
-    return base / L"JhonClient" / L"skins";
+    return utils::client_data_directory(L"skins", std::filesystem::temp_directory_path());
 }
 
 bool write_png(const std::filesystem::path& file, std::uint32_t width, std::uint32_t height,

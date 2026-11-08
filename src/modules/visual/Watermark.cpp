@@ -3,7 +3,7 @@
 #include <imgui.h>
 
 Watermark::Watermark()
-    : Module("Visual", "Watermark", "Displays the JhonClient name on screen.") {
+    : Module("Visual", "Watermark", "Displays the ChanterClient name on screen.") {
 }
 
 void Watermark::on_imgui_render() {
@@ -21,7 +21,7 @@ void Watermark::on_imgui_render() {
     constexpr float horizontalPadding = 11.0f;
     constexpr float verticalPadding = 7.0f;
 
-    constexpr const char* brand = "JhonClient";
+    constexpr const char* brand = "ChanterClient";
     constexpr const char* version = "26.60";
 
     const ImVec2 brandSize = ImGui::CalcTextSize(brand);

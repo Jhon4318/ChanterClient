@@ -16,8 +16,8 @@ Client& Client::instance() {
 void Client::initialize(HMODULE module) {
     m_module = module;
 
-    Logger::instance().initialize("JhonClient", true, true);
-    LOG_INFO("Initializing JhonClient for Minecraft Bedrock v26.60...");
+    Logger::instance().initialize("ChanterClient", true, true);
+    LOG_INFO("Initializing ChanterClient for Minecraft Bedrock v26.60...");
 
     ModuleManager::instance().initialize();
 
@@ -29,7 +29,7 @@ void Client::initialize(HMODULE module) {
     }
 
     if (!dx12_hook::start(m_module)) {
-        LOG_ERROR("Failed to start the DirectX overlay. Shutting JhonClient down.");
+        LOG_ERROR("Failed to start the DirectX overlay. Shutting ChanterClient down.");
         shutdown();
         FreeLibraryAndExitThread(m_module, 1);
         return;
@@ -43,14 +43,14 @@ void Client::initialize(HMODULE module) {
         }
     });
 
-    LOG_INFO("JhonClient initialized successfully. Press INSERT for the menu or END to unload.");
+    LOG_INFO("ChanterClient initialized successfully. Press INSERT for the menu or END to unload.");
 }
 
 void Client::shutdown() {
-    LOG_INFO("Shutting down JhonClient...");
+    LOG_INFO("Shutting down ChanterClient...");
     dx12_hook::stop();
     minecraft::hooks::shutdown();
     ModuleManager::instance().shutdown();
-    LOG_INFO("JhonClient shutdown complete.");
+    LOG_INFO("ChanterClient shutdown complete.");
     Logger::instance().shutdown();
 }

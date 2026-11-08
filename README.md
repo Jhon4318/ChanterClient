@@ -1,8 +1,8 @@
-# JhonClient
+# ChanterClient
 
 独立型 Minecraft Bedrock Edition クライアント（Windows x64）。
 
-JhonClient は必要な機能を独立したモジュールとして追加していく個人用プロジェクトです。
+ChanterClient は必要な機能を独立したモジュールとして追加していく個人用プロジェクトです。
 
 ## 対象環境
 
@@ -24,9 +24,9 @@ JhonClient は必要な機能を独立したモジュールとして追加して
 - モジュール登録・有効/無効・キーバインド
 - JSON プロファイル
 - 必須ゲームシグネチャが見つからない場合は初期化を中止
-- 初期モジュール: JhonClient Watermark
+- 初期モジュール: ChanterClient Watermark
 - Tools: SkinStealer（受信したプレイヤースキンをPNG保存、UUIDフィルター付き）
-- JhonClient独自の「Control Studio」UI（ダークスレート＋シアンアクセント）
+- ChanterClient独自の「Control Studio」UI（ダークスレート＋シアンアクセント）
 
 戦闘・移動など、元テンプレートに含まれていたサンプルモジュールは初期構成から除外しています。
 
@@ -43,7 +43,7 @@ cmake --build build --config Release --parallel
 
 初回の CMake 構成時に、EnTT、libhat、MinHook、expected-lite、nlohmann/json を固定バージョンで取得します。初回ビルドにはインターネット接続が必要です。
 
-出力 DLL: `build/Release/JhonClient.dll`
+出力 DLL: `build/Release/ChanterClient.dll`
 
 GitHub Actions でも Windows x64 ビルドを実行し、DLL を成果物として保存します。
 
@@ -69,11 +69,11 @@ ClickGUI の `Tools` → `ContainerTransfer` で有効にし、次の3項目を�
 
 ## SkinStealer
 
-ClickGUIの `Tools` → `SkinStealer` を有効にすると、受信した `PlayerList` / `PlayerSkin` パケットのスキン画像をPNGとして保存します。保存先は `%APPDATA%\\JhonClient\\skins` です。UUIDフィルターを有効にすると、指定UUIDに対象を絞れます。ゲームのパケット形式はMinecraft Bedrock 1.26.60（protocol 2225）を基準にしています。パケットファクトリのシグネチャが一致しないビルドでは、SkinStealerのみ初期化されず、他の機能はそのまま起動します。
+ClickGUIの `Tools` → `SkinStealer` を有効にすると、受信した `PlayerList` / `PlayerSkin` パケットのスキン画像をPNGとして保存します。保存先は `%APPDATA%\\ChanterClient\\skins` です。UUIDフィルターを有効にすると、指定UUIDに対象を絞れます。ゲームのパケット形式はMinecraft Bedrock 1.26.60（protocol 2225）を基準にしています。パケットファクトリのシグネチャが一致しないビルドでは、SkinStealerのみ初期化されず、他の機能はそのまま起動します。
 
 ## 設定とログ
 
-設定とログは `%APPDATA%\JhonClient` 以下に保存します。
+設定とログは `%APPDATA%\\ChanterClient` 以下に保存します。旧版の `%APPDATA%\\JhonClient` にある設定・ログ・スキンは、新しい保存先に同名ファイルがない場合に引き継ぎます。
 
 ## 技術的な土台とライセンス
 
@@ -81,4 +81,4 @@ ClickGUIの `Tools` → `SkinStealer` を有効にすると、受信した `Play
 
 ## 注意
 
-本プロジェクトは個人の検証・学習用です。自分が管理する環境、または利用が許可された環境でのみ使用してください。ゲームやサーバーの規約・ルールに従ってください。JhonClient はアンチチート回避、権限回避、保護機構の無効化を目的としません。
+本プロジェクトは個人の検証・学習用です。自分が管理する環境、または利用が許可された環境でのみ使用してください。ゲームやサーバーの規約・ルールに従ってください。ChanterClient はアンチチート回避、権限回避、保護機構の無効化を目的としません。

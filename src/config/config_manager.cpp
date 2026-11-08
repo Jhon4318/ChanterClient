@@ -1,6 +1,7 @@
 #include "config/config_manager.h"
 #include "modules/module_manager.h"
 #include "utils/logger.h"
+#include "utils/client_paths.h"
 #include <cstdlib>
 #include <fstream>
 
@@ -12,14 +13,7 @@ ConfigManager& ConfigManager::instance() {
 }
 
 std::filesystem::path ConfigManager::get_config_directory() const {
-    char* appdata = nullptr;
-    size_t len = 0;
-    if (_dupenv_s(&appdata, &len, "APPDATA") == 0 && appdata != nullptr) {
-        std::filesystem::path path = std::filesystem::path(appdata) / "JhonClient" / "configs";
-        free(appdata);
-        return path;
-    }
-    return std::filesystem::current_path() / "configs";
+    return utils::client_data_directory(L"configs", std::filesystem::current_path());
 }
 
 void ConfigManager::ensure_directory_exists() const {
