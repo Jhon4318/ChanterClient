@@ -149,14 +149,14 @@ namespace clickgui {
 
         bool open = true;
         const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar;
-        if (ImGui::Begin("JHONCLIENT     /     CONTROL STUDIO", &open, flags)) {
+        if (ImGui::Begin("CHANTERCLIENT     /     CONTROL STUDIO", &open, flags)) {
             // Header: identity and runtime status, deliberately styled as a single app dashboard.
             ImGui::PushStyleColor(ImGuiCol_ChildBg, kRaisedBg);
             ImGui::BeginChild("##topbar", ImVec2(0, 58), true, ImGuiWindowFlags_NoScrollbar);
             ImGui::TextColored(kAccent, "JH");
             ImGui::SameLine();
             ImGui::BeginGroup();
-            ImGui::Text("JHONCLIENT");
+            ImGui::Text("CHANTERCLIENT");
             ImGui::TextColored(kMuted, "BEDROCK EDITION  /  BUILD 26.60");
             ImGui::EndGroup();
             ImGui::SameLine();
@@ -274,7 +274,7 @@ namespace clickgui {
                 ImGui::Spacing();
                 ImGui::TextWrapped("左側の一覧からモジュールを選択すると、ここに設定とキーバインドが表示されます。");
                 ImGui::Spacing();
-                ImGui::TextColored(kMuted, "JHONCLIENT / PERSONAL CONTROL ENVIRONMENT");
+                ImGui::TextColored(kMuted, "CHANTERCLIENT / PERSONAL CONTROL ENVIRONMENT");
             }
             ImGui::EndChild();
 
