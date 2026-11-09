@@ -142,10 +142,12 @@ static_assert(sizeof(ContainerModels) == 64);
 bool adopt_manager_model(void* manager, std::shared_ptr<ContainerManagerModel>& owner) {
     if (manager == nullptr) return false;
     try {
-        // ContainerManagerController is polymorphic (vfptr at +0); its first
-        // declared member mContainerManagerModel is the weak_ptr at +0x08.
+        // ContainerManagerController has a vfptr at +0 and inherits
+        // enable_shared_from_this (weak_ptr base at +0x08, size 0x10).
+        // Its first declared member mContainerManagerModel is therefore at +0x18.
+        constexpr std::ptrdiff_t kManagerModelWeakPtrOffset = 0x18;
         const auto* modelWeak = reinterpret_cast<const std::weak_ptr<ContainerManagerModel>*>(
-            static_cast<const std::byte*>(manager) + sizeof(void*));
+            static_cast<const std::byte*>(manager) + kManagerModelWeakPtrOffset);
         owner = modelWeak->lock();
         return owner != nullptr;
     } catch (...) {
