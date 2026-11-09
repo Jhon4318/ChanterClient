@@ -11,8 +11,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace minecraft::container_ui {
 namespace {
@@ -20,8 +22,6 @@ namespace {
 using ContainerSmHandleFn = int(__fastcall*)(
     void* stateMachine, std::uint32_t buttonId, int state,
     const std::string* collection, int slot);
-using ContainerGetItemFn = const void*(__fastcall*)(
-    void* manager, const std::string* collection, int slot);
 using StackIsNullFn = bool(__fastcall*)(const void* stack);
 using StackMaxSizeFn = std::uint8_t(__fastcall*)(const void* stack);
 using ScreenCtorFn = void*(__fastcall*)(void* self, void* a2, void* a3, void* a4);
@@ -32,6 +32,7 @@ struct ScreenState {
     void* controller = nullptr;
     void* stateMachine = nullptr;
     void* manager = nullptr;
+    std::shared_ptr<void> managerModelOwner;
     const void* emptyStack = nullptr;
 };
 
@@ -47,6 +48,10 @@ constexpr std::ptrdiff_t kStackCountOffset = 0x22;
 constexpr std::ptrdiff_t kStackNetTagOffset = 0x90;
 constexpr std::ptrdiff_t kStackItemOffset = 0x08;
 constexpr std::ptrdiff_t kItemNameOffset = 0x128;
+// Verified against Minecraft package 1.26.6005.0: ContainerManagerModel::mContainers.
+constexpr std::ptrdiff_t kContainerModelsOffset = 0xC8;
+constexpr std::size_t kContainerModelGetSizeSlot = 4;
+constexpr std::size_t kContainerModelGetItemStackSlot = 8;
 constexpr int kMaxCollectionSlots = 64;
 
 constexpr std::uint32_t button_id(const char* text) {
@@ -63,7 +68,6 @@ constexpr int kHeld = 1;
 constexpr int kReleased = 2;
 
 ContainerSmHandleFn g_smHandle = nullptr;
-ContainerGetItemFn g_getItem = nullptr;
 StackIsNullFn g_stackIsNull = nullptr;
 StackMaxSizeFn g_stackMaxSize = nullptr;
 ControllerTickFn g_containerScreenTick = nullptr;
@@ -126,11 +130,67 @@ bool read_std_string(const void* address, char* output, std::size_t capacity) no
     }
 }
 
-bool call_get_item(void* manager, const std::string* collection, int slot, const void** output) noexcept {
-    if (g_getItem == nullptr || manager == nullptr || collection == nullptr || output == nullptr) return false;
+using ContainerModels = std::unordered_map<std::string, std::shared_ptr<void>>;
+static_assert(sizeof(ContainerModels) == 64);
+
+// The controller owns a weak_ptr<ContainerManagerModel> at offset zero. Hold a
+// shared reference while the hidden screen is active so the model map stays alive.
+bool adopt_manager_model(void* manager, std::shared_ptr<void>& owner) {
+    if (manager == nullptr) return false;
     __try {
-        *output = g_getItem(manager, collection, slot);
+        const auto* modelWeak = reinterpret_cast<const std::weak_ptr<void>*>(manager);
+        owner = modelWeak->lock();
+        return owner != nullptr;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        owner.reset();
+        return false;
+    }
+}
+
+// mContainers is at +0xC8 in the 1.26.6005.0 ContainerManagerModel.
+// Values are shared_ptr<ContainerModel>; shared_ptr<void> has the same MSVC layout.
+__declspec(noinline) void* find_model_guarded(
+    void* managerModel, const std::string* collection) noexcept {
+    if (managerModel == nullptr || collection == nullptr) return nullptr;
+    __try {
+        auto* models = reinterpret_cast<ContainerModels*>(
+            static_cast<std::byte*>(managerModel) + kContainerModelsOffset);
+        if (models->size() > 128) return nullptr;
+        const auto it = models->find(*collection);
+        return it != models->end() ? it->second.get() : nullptr;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+void* find_container_model(std::string_view collection) {
+    if (!g_screen.managerModelOwner) return nullptr;
+    const std::string key(collection);
+    return find_model_guarded(g_screen.managerModelOwner.get(), &key);
+}
+
+bool call_model_size(void* model, int* output) noexcept {
+    if (model == nullptr || output == nullptr) return false;
+    __try {
+        void** vtable = *reinterpret_cast<void***>(model);
+        if (vtable == nullptr || vtable[kContainerModelGetSizeSlot] == nullptr) return false;
+        using GetSizeFn = int(__fastcall*)(void*);
+        *output = reinterpret_cast<GetSizeFn>(vtable[kContainerModelGetSizeSlot])(model);
         return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        *output = 0;
+        return false;
+    }
+}
+
+bool call_model_item(void* model, int slot, const void** output) noexcept {
+    if (model == nullptr || slot < 0 || output == nullptr) return false;
+    __try {
+        void** vtable = *reinterpret_cast<void***>(model);
+        if (vtable == nullptr || vtable[kContainerModelGetItemStackSlot] == nullptr) return false;
+        using GetItemFn = const void*(__fastcall*)(void*, int);
+        *output = reinterpret_cast<GetItemFn>(vtable[kContainerModelGetItemStackSlot])(model, slot);
+        return *output != nullptr;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         *output = nullptr;
         return false;
@@ -169,7 +229,7 @@ bool call_sm(void* stateMachine, std::uint32_t id, int state,
 }
 
 bool adopt_controller(void* controller) {
-    if (controller == nullptr || g_stateMachineOffset <= 0 || g_managerOffset <= 0 || g_getItem == nullptr) {
+    if (controller == nullptr || g_stateMachineOffset <= 0 || g_managerOffset <= 0) {
         return false;
     }
 
@@ -178,17 +238,17 @@ bool adopt_controller(void* controller) {
         return false;
     }
 
-    void* stateMachine = static_cast<std::byte*>(controller) + g_stateMachineOffset;
-    static const std::string noneCollection = "tk_none_collection";
-    const void* emptyStack = nullptr;
-    if (!call_get_item(manager, &noneCollection, 0, &emptyStack) || emptyStack == nullptr) {
+    std::shared_ptr<void> managerModelOwner;
+    if (!adopt_manager_model(manager, managerModelOwner)) {
         return false;
     }
 
+    void* stateMachine = static_cast<std::byte*>(controller) + g_stateMachineOffset;
     g_screen.controller = controller;
     g_screen.stateMachine = stateMachine;
     g_screen.manager = manager;
-    g_screen.emptyStack = emptyStack;
+    g_screen.managerModelOwner = std::move(managerModelOwner);
+    g_screen.emptyStack = nullptr;
     return true;
 }
 
@@ -350,8 +410,6 @@ bool initialize() {
     const std::uintptr_t smHandle =
         minecraft::hook_memory::resolve_signature(BedrockSignatures::container_sm_handle);
     g_smHandle = reinterpret_cast<ContainerSmHandleFn>(smHandle);
-    g_getItem = reinterpret_cast<ContainerGetItemFn>(
-        minecraft::hook_memory::resolve_signature(BedrockSignatures::container_get_item));
     g_stackIsNull = reinterpret_cast<StackIsNullFn>(
         minecraft::hook_memory::resolve_signature(BedrockSignatures::item_stack_is_null));
     g_stackMaxSize = reinterpret_cast<StackMaxSizeFn>(
@@ -387,7 +445,7 @@ bool initialize() {
         }
     }
 
-    if (g_smHandle == nullptr || g_getItem == nullptr || g_stackIsNull == nullptr ||
+    if (g_smHandle == nullptr || g_stackIsNull == nullptr ||
         g_stackMaxSize == nullptr || g_containerScreenTick == nullptr ||
         g_stateMachineOffset < 0 || g_managerOffset < 0 ||
         screenCtor == 0 || scenePush == 0) {
@@ -513,22 +571,21 @@ void release_offstack_screen() {
 int collection_size(std::string_view collection) {
     if (!has_hidden_screen()) return 0;
 
-    const std::string name(collection);
+    void* model = find_container_model(collection);
     int size = 0;
-    for (; size < kMaxCollectionSlots; ++size) {
-        const void* stack = nullptr;
-        if (!call_get_item(g_screen.manager, &name, size, &stack)) return 0;
-        if (stack == nullptr || stack == g_screen.emptyStack) break;
+    if (model == nullptr || !call_model_size(model, &size) ||
+        size < 0 || size > kMaxCollectionSlots) {
+        return 0;
     }
-    return size < kMaxCollectionSlots ? size : 0;
+    return size;
 }
 
 const void* stack_at(std::string_view collection, int index) {
     if (!has_hidden_screen() || index < 0 || index >= collection_size(collection)) return nullptr;
 
-    const std::string name(collection);
+    void* model = find_container_model(collection);
     const void* stack = nullptr;
-    if (!call_get_item(g_screen.manager, &name, index, &stack)) return nullptr;
+    if (!call_model_item(model, index, &stack)) return nullptr;
     return stack == g_screen.emptyStack ? nullptr : stack;
 }
 
