@@ -175,6 +175,16 @@ void ContainerTransfer::on_container_opened(void* controller) {
     m_lastTotal = -1;
     m_inPass = false;
     m_passClicked.clear();
+
+    // Report the real model capacities once per opened container. This makes it
+    // possible to distinguish a missing collection from an empty collection.
+    const int containerSlots = minecraft::container_ui::collection_size("container_items");
+    const int inventorySlots = minecraft::container_ui::collection_size("inventory_items");
+    const int hotbarSlots = minecraft::container_ui::collection_size("hotbar_items");
+    const int combinedSlots =
+        minecraft::container_ui::collection_size("combined_hotbar_and_inventory_items");
+    LOG_INFO("[ContainerTransfer] Collections ready: container_items={}, inventory_items={}, hotbar_items={}, combined={}.",
+        containerSlots, inventorySlots, hotbarSlots, combinedSlots);
     LOG_INFO("[ContainerTransfer] Hidden container is ready; starting the filtered transfer.");
 }
 
