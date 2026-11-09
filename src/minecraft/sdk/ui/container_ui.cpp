@@ -137,11 +137,11 @@ static_assert(sizeof(ContainerModels) == 64);
 // shared reference while the hidden screen is active so the model map stays alive.
 bool adopt_manager_model(void* manager, std::shared_ptr<void>& owner) {
     if (manager == nullptr) return false;
-    __try {
+    try {
         const auto* modelWeak = reinterpret_cast<const std::weak_ptr<void>*>(manager);
         owner = modelWeak->lock();
         return owner != nullptr;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } catch (...) {
         owner.reset();
         return false;
     }
@@ -152,13 +152,13 @@ bool adopt_manager_model(void* manager, std::shared_ptr<void>& owner) {
 __declspec(noinline) void* find_model_guarded(
     void* managerModel, const std::string* collection) noexcept {
     if (managerModel == nullptr || collection == nullptr) return nullptr;
-    __try {
+    try {
         auto* models = reinterpret_cast<ContainerModels*>(
             static_cast<std::byte*>(managerModel) + kContainerModelsOffset);
         if (models->size() > 128) return nullptr;
         const auto it = models->find(*collection);
         return it != models->end() ? it->second.get() : nullptr;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } catch (...) {
         return nullptr;
     }
 }
