@@ -17,6 +17,9 @@
 #include <unordered_map>
 #include <utility>
 
+class ContainerManagerModel;
+class ContainerModel;
+
 namespace minecraft::container_ui {
 namespace {
 
@@ -33,7 +36,7 @@ struct ScreenState {
     void* controller = nullptr;
     void* stateMachine = nullptr;
     void* manager = nullptr;
-    std::shared_ptr<void> managerModelOwner;
+    std::shared_ptr<ContainerManagerModel> managerModelOwner;
     const void* emptyStack = nullptr;
 };
 
@@ -131,15 +134,15 @@ bool read_std_string(const void* address, char* output, std::size_t capacity) no
     }
 }
 
-using ContainerModels = std::unordered_map<std::string, std::shared_ptr<void>>;
+using ContainerModels = std::unordered_map<std::string, std::shared_ptr<ContainerModel>>;
 static_assert(sizeof(ContainerModels) == 64);
 
 // The controller owns a weak_ptr<ContainerManagerModel> at offset zero. Hold a
 // shared reference while the hidden screen is active so the model map stays alive.
-bool adopt_manager_model(void* manager, std::shared_ptr<void>& owner) {
+bool adopt_manager_model(void* manager, std::shared_ptr<ContainerManagerModel>& owner) {
     if (manager == nullptr) return false;
     try {
-        const auto* modelWeak = reinterpret_cast<const std::weak_ptr<void>*>(manager);
+        const auto* modelWeak = reinterpret_cast<const std::weak_ptr<ContainerManagerModel>*>(manager);
         owner = modelWeak->lock();
         return owner != nullptr;
     } catch (...) {
@@ -149,7 +152,7 @@ bool adopt_manager_model(void* manager, std::shared_ptr<void>& owner) {
 }
 
 // mContainers is at +0xC8 in the 1.26.6005.0 ContainerManagerModel.
-// Values are shared_ptr<ContainerModel>; shared_ptr<void> has the same MSVC layout.
+// Keep the exact map value type from the 1.26.6005.0 SDK layout.
 __declspec(noinline) void* find_model_guarded(
     void* managerModel, const std::string* collection) noexcept {
     if (managerModel == nullptr || collection == nullptr) return nullptr;
@@ -239,7 +242,7 @@ bool adopt_controller(void* controller) {
         return false;
     }
 
-    std::shared_ptr<void> managerModelOwner;
+    std::shared_ptr<ContainerManagerModel> managerModelOwner;
     if (!adopt_manager_model(manager, managerModelOwner)) {
         return false;
     }
