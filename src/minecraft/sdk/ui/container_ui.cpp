@@ -142,7 +142,10 @@ static_assert(sizeof(ContainerModels) == 64);
 bool adopt_manager_model(void* manager, std::shared_ptr<ContainerManagerModel>& owner) {
     if (manager == nullptr) return false;
     try {
-        const auto* modelWeak = reinterpret_cast<const std::weak_ptr<ContainerManagerModel>*>(manager);
+        // ContainerManagerController is polymorphic (vfptr at +0); its first
+        // declared member mContainerManagerModel is the weak_ptr at +0x08.
+        const auto* modelWeak = reinterpret_cast<const std::weak_ptr<ContainerManagerModel>*>(
+            static_cast<const std::byte*>(manager) + sizeof(void*));
         owner = modelWeak->lock();
         return owner != nullptr;
     } catch (...) {
