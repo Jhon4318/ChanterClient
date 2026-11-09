@@ -18,8 +18,12 @@
 #include <string>
 
 namespace {
-    using GameModeUseItemOnFn = InteractionResult(__fastcall*)(
+    // GameMode::useItemOn returns a small aggregate. Under the MSVC x64 ABI,
+    // the member call uses a hidden return buffer in RDX. This hook is a free
+    // function, so that buffer must be represented explicitly as argument #2.
+    using GameModeUseItemOnFn = InteractionResult*(__fastcall*)(
         void* self,
+        InteractionResult* resultOut,
         void* itemStack,
         const minecraft::sdk::BlockPosition* position,
         std::uint8_t face,
@@ -32,8 +36,9 @@ namespace {
     std::uintptr_t g_hookedAddress = 0;
     std::mutex g_hookMutex;
 
-    InteractionResult __fastcall hook_game_mode_use_item_on(
+    InteractionResult* __fastcall hook_game_mode_use_item_on(
         void* self,
+        InteractionResult* resultOut,
         void* itemStack,
         const minecraft::sdk::BlockPosition* position,
         std::uint8_t face,
@@ -43,8 +48,8 @@ namespace {
         bool isFirstEvent)
     {
         const auto original = g_originalUseItemOn;
-        if (original == nullptr) {
-            return {};
+        if (original == nullptr || resultOut == nullptr) {
+            return resultOut;
         }
 
         // Arm only for a configured container block, before vanilla constructs its screen.
@@ -60,19 +65,21 @@ namespace {
         }
 
         // Always preserve vanilla behavior and its return value.
-        const InteractionResult result = original(
-            self, itemStack, position, face, hitPosition, handSlot,
+        InteractionResult* result = original(
+            self, resultOut, itemStack, position, face, hitPosition, handSlot,
             targetBlock, isFirstEvent);
 
         if (transferPrepared) {
-            const bool captured = minecraft::container_ui::complete_user_open(result.mSuccess);
+            const bool captured = minecraft::container_ui::complete_user_open(
+                result != nullptr && result->mSuccess);
             if (!captured) {
                 transfer->on_open_attempt_failed();
             }
         }
 
         // Keep the general event for other modules; repeated simulation events are ignored.
-        if (result.mSuccess && isFirstEvent && position != nullptr && targetBlock != nullptr) {
+        if (result != nullptr && result->mSuccess && isFirstEvent &&
+            position != nullptr && targetBlock != nullptr) {
             if (blockType.empty()) {
                 minecraft::sdk::block_identity::try_get_type_name(targetBlock, blockType);
             }
