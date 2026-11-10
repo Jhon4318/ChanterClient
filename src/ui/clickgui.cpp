@@ -19,6 +19,7 @@ namespace {
         std::string category = "Visual";
         Module* selected = nullptr;
         bool initialized = false;
+        bool layoutInitialized = false;
     };
 
     UiState g_ui;
@@ -158,34 +159,67 @@ namespace clickgui {
             if (!exists) g_ui.selected = nullptr;
         }
 
-        ImGui::SetNextWindowSize(ImVec2(1010.0f, 650.0f), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
+        if (!g_ui.layoutInitialized) {
+            const float windowWidth = ImMin(1040.0f, ImMax(760.0f, io.DisplaySize.x - 40.0f));
+            const float windowHeight = ImMin(700.0f, ImMax(540.0f, io.DisplaySize.y - 40.0f));
+            ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(
+                ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f),
+                ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+            g_ui.layoutInitialized = true;
+        }
 
         bool open = true;
-        const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar;
+        const ImGuiWindowFlags flags =
+            ImGuiWindowFlags_NoCollapse |
+            ImGuiWindowFlags_NoScrollbar |
+            ImGuiWindowFlags_NoScrollWithMouse;
         if (ImGui::Begin("CHANTERCLIENT     /     CONTROL PANEL", &open, flags)) {
             // Header: identity and runtime status, deliberately styled as a single app dashboard.
             ImGui::PushStyleColor(ImGuiCol_ChildBg, kRaisedBg);
-            ImGui::BeginChild("##topbar", ImVec2(0, 58), true, ImGuiWindowFlags_NoScrollbar);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 8.0f));
+            ImGui::BeginChild(
+                "##topbar",
+                ImVec2(0, 74.0f),
+                true,
+                ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+            const float lineHeight = ImGui::GetTextLineHeight();
+            const float groupHeight = lineHeight * 2.0f + ImGui::GetStyle().ItemSpacing.y;
+            const float contentHeight = ImGui::GetContentRegionAvail().y;
+            const float groupTop = ImMax(0.0f, (contentHeight - groupHeight) * 0.5f);
+            const float centerLine = groupTop + (groupHeight - lineHeight) * 0.5f;
+
+            ImGui::SetCursorPos(ImVec2(14.0f, centerLine));
             ImGui::TextColored(kAccent, "CC");
-            ImGui::SameLine();
+
+            ImGui::SetCursorPos(ImVec2(58.0f, groupTop));
             ImGui::BeginGroup();
             ImGui::Text("CHANTERCLIENT");
             ImGui::TextColored(kMuted, "Minecraft Bedrock Edition 1.26.60");
             ImGui::EndGroup();
-            ImGui::SameLine();
-            ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 205.0f);
-            ImGui::TextColored(kWarm, "●  Session Active");
+
+            const char* sessionText = "●  Session Active";
+            const float sessionWidth = ImGui::CalcTextSize(sessionText).x;
+            const float contentRight = ImGui::GetWindowContentRegionMax().x;
+            ImGui::SetCursorPos(ImVec2(contentRight - sessionWidth, centerLine));
+            ImGui::TextColored(kWarm, "%s", sessionText);
+
             ImGui::EndChild();
+            ImGui::PopStyleVar();
             ImGui::PopStyleColor();
 
             ImGui::Spacing();
-            const float bodyHeight = ImGui::GetContentRegionAvail().y - 28.0f;
+            const float footerReserve = ImGui::GetTextLineHeightWithSpacing() +
+                ImGui::GetStyle().ItemSpacing.y;
+            const float bodyHeight = ImMax(120.0f, ImGui::GetContentRegionAvail().y - footerReserve);
             const float sideWidth = 176.0f;
             const float listWidth = 292.0f;
 
             // Left navigation rail.
-            ImGui::BeginChild("##navigation", ImVec2(sideWidth, bodyHeight), true);
+            ImGui::BeginChild(
+                "##navigation", ImVec2(sideWidth, bodyHeight), true,
+                ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
             ImGui::TextColored(kMuted, "MENU");
             ImGui::Spacing();
             for (const auto& category : categories) {
@@ -209,7 +243,9 @@ namespace clickgui {
             ImGui::SameLine();
 
             // Middle index: searchable module list.
-            ImGui::BeginChild("##module_index", ImVec2(listWidth, bodyHeight), true);
+            ImGui::BeginChild(
+                "##module_index", ImVec2(listWidth, bodyHeight), true,
+                ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
             if (g_ui.category == "Configs") {
                 ImGui::TextColored(kAccent, "Profiles");
                 ImGui::TextColored(kMuted, "Saved settings");
