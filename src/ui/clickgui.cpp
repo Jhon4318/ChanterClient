@@ -24,18 +24,12 @@ namespace {
     UiState g_ui;
 
     std::string display_category(const std::string& category) {
-        if (category == "Visual") return "表示";
-        if (category == "Tools") return "ツール";
-        if (category == "Configs") return "プロファイル";
+        if (category == "Configs") return "Profiles";
         return category;
     }
 
     std::string display_module_name(const Module* module) {
-        if (module == nullptr) return {};
-        if (module->name() == "ContainerTransfer") return "コンテナ一括転送 (ContainerTransfer)";
-        if (module->name() == "SkinStealer") return "スキン保存 (SkinStealer)";
-        if (module->name() == "Watermark") return "画面ロゴ (Watermark)";
-        return module->name();
+        return module == nullptr ? std::string{} : module->name();
     }
 
     // Light theme for the entire client operation panel.
@@ -113,24 +107,22 @@ namespace {
     }
 
     void draw_profiles() {
-        ImGui::TextColored(kAccent, "設定プロファイル");
-        ImGui::TextColored(kMuted, "設定をファイル単位で保存・切り替えできます。");
-        ImGui::Spacing();
+        ImGui::TextColored(kAccent, "PROFILES");
         ImGui::SetNextItemWidth(250.0f);
-        ImGui::InputTextWithHint("##profile_name", "プロファイル名", g_ui.profile, sizeof(g_ui.profile));
+        ImGui::InputTextWithHint("##profile_name", "Profile name", g_ui.profile, sizeof(g_ui.profile));
         ImGui::SameLine();
-        if (ImGui::Button("保存")) {
+        if (ImGui::Button("Save")) {
             if (g_ui.profile[0] != '\0') ConfigManager::instance().save_config(g_ui.profile);
         }
         ImGui::SameLine();
-        if (ImGui::Button("読み込み")) {
+        if (ImGui::Button("Load")) {
             if (g_ui.profile[0] != '\0') ConfigManager::instance().load_config(g_ui.profile);
         }
         ImGui::Separator();
-        ImGui::Text("保存済みプロファイル");
+        ImGui::Text("Saved profiles");
         const auto profiles = ConfigManager::instance().get_available_configs();
         if (profiles.empty()) {
-            ImGui::TextColored(kMuted, "保存済みプロファイルはありません。");
+            ImGui::TextColored(kMuted, "No saved profiles.");
         }
         for (const auto& profile : profiles) {
             ImGui::PushID(profile.c_str());
@@ -138,9 +130,9 @@ namespace {
                 strncpy_s(g_ui.profile, profile.c_str(), sizeof(g_ui.profile) - 1);
             }
             ImGui::SameLine();
-            if (ImGui::SmallButton("読込")) ConfigManager::instance().load_config(profile);
+            if (ImGui::SmallButton("Load")) ConfigManager::instance().load_config(profile);
             ImGui::SameLine();
-            if (ImGui::SmallButton("削除")) ConfigManager::instance().delete_config(profile);
+            if (ImGui::SmallButton("Delete")) ConfigManager::instance().delete_config(profile);
             ImGui::PopID();
         }
     }
@@ -171,7 +163,7 @@ namespace clickgui {
 
         bool open = true;
         const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar;
-        if (ImGui::Begin("CHANTERCLIENT     /     操作パネル", &open, flags)) {
+        if (ImGui::Begin("CHANTERCLIENT     /     CONTROL PANEL", &open, flags)) {
             // Header: identity and runtime status, deliberately styled as a single app dashboard.
             ImGui::PushStyleColor(ImGuiCol_ChildBg, kRaisedBg);
             ImGui::BeginChild("##topbar", ImVec2(0, 58), true, ImGuiWindowFlags_NoScrollbar);
@@ -183,7 +175,7 @@ namespace clickgui {
             ImGui::EndGroup();
             ImGui::SameLine();
             ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 205.0f);
-            ImGui::TextColored(kWarm, "●  セッション中");
+            ImGui::TextColored(kWarm, "●  Session Active");
             ImGui::EndChild();
             ImGui::PopStyleColor();
 
@@ -194,7 +186,7 @@ namespace clickgui {
 
             // Left navigation rail.
             ImGui::BeginChild("##navigation", ImVec2(sideWidth, bodyHeight), true);
-            ImGui::TextColored(kMuted, "メニュー");
+            ImGui::TextColored(kMuted, "MENU");
             ImGui::Spacing();
             for (const auto& category : categories) {
                 if (category == "Configs") continue;
@@ -206,12 +198,12 @@ namespace clickgui {
             }
             ImGui::Spacing();
             ImGui::Separator();
-            if (category_button("プロファイル", g_ui.category == "Configs")) {
+            if (category_button("Profiles", g_ui.category == "Configs")) {
                 g_ui.category = "Configs";
                 g_ui.selected = nullptr;
             }
             ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 53.0f);
-            ImGui::TextColored(kMuted, "INSERTキー：操作パネルの開閉");
+            ImGui::TextColored(kMuted, "INSERT: Toggle panel");
             ImGui::EndChild();
 
             ImGui::SameLine();
@@ -219,16 +211,16 @@ namespace clickgui {
             // Middle index: searchable module list.
             ImGui::BeginChild("##module_index", ImVec2(listWidth, bodyHeight), true);
             if (g_ui.category == "Configs") {
-                ImGui::TextColored(kAccent, "プロファイル");
-                ImGui::TextColored(kMuted, "保存済み設定");
+                ImGui::TextColored(kAccent, "Profiles");
+                ImGui::TextColored(kMuted, "Saved settings");
             } else {
-                ImGui::TextColored(kAccent, "機能一覧");
+                ImGui::TextColored(kAccent, "FEATURES");
                 const auto modules = modules_for_category(g_ui.category);
                 const std::string categoryName = display_category(g_ui.category);
-                ImGui::TextColored(kMuted, "%zu 個の機能 / %s", modules.size(), categoryName.c_str());
+                ImGui::TextColored(kMuted, "%zu features / %s", modules.size(), categoryName.c_str());
                 ImGui::Spacing();
                 ImGui::SetNextItemWidth(-1.0f);
-                ImGui::InputTextWithHint("##module_search", "機能を検索...", g_ui.search, sizeof(g_ui.search));
+                ImGui::InputTextWithHint("##module_search", "Search features...", g_ui.search, sizeof(g_ui.search));
                 ImGui::Spacing();
 
                 for (Module* module : modules) {
@@ -240,7 +232,7 @@ namespace clickgui {
                     ImGui::PushID(module);
                     const bool selected = g_ui.selected == module;
                     std::string row = moduleLabel;
-                    row += module->enabled() ? "     [有効]" : "     [無効]";
+                    row += module->enabled() ? "     [ON]" : "     [OFF]";
                     if (ImGui::Selectable(row.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(0, 42))) {
                         g_ui.selected = module;
                     }
@@ -253,17 +245,22 @@ namespace clickgui {
             ImGui::SameLine();
 
             // Right workspace: selected module details and settings.
-            ImGui::BeginChild("##module_workspace", ImVec2(0, bodyHeight), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+            const bool compactWorkspace = g_ui.selected != nullptr &&
+                g_ui.selected->name() == "ContainerTransfer" && g_ui.category != "Configs";
+            const ImGuiWindowFlags workspaceFlags = compactWorkspace
+                ? (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)
+                : ImGuiWindowFlags_AlwaysVerticalScrollbar;
+            if (compactWorkspace) {
+                ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(7.0f, 5.0f));
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 5.0f));
+            }
+            ImGui::BeginChild("##module_workspace", ImVec2(0, bodyHeight), true, workspaceFlags);
             if (g_ui.category == "Configs") {
                 draw_profiles();
             } else if (g_ui.selected) {
                 Module* module = g_ui.selected;
-                ImGui::TextColored(kAccent, "機能の詳細");
-                ImGui::Spacing();
                 const std::string moduleLabel = display_module_name(module);
-                ImGui::Text("%s", moduleLabel.c_str());
-                if (!module->tooltip().empty()) ImGui::TextWrapped("%s", module->tooltip().c_str());
-                ImGui::Spacing();
+                ImGui::TextColored(kAccent, "%s", moduleLabel.c_str());
 
                 const bool enabled = module->enabled();
                 if (enabled) {
@@ -275,40 +272,42 @@ namespace clickgui {
                     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.825f, 0.895f, 0.970f, 1.0f));
                     ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
                 }
-                if (ImGui::Button(enabled ? "機能を無効化" : "機能を有効化", ImVec2(180.0f, 34.0f))) module->toggle();
+                if (ImGui::Button(enabled ? "Disable" : "Enable", ImVec2(150.0f, 30.0f))) module->toggle();
                 ImGui::PopStyleColor(3);
 
                 ImGui::Spacing();
                 ImGui::Separator();
-                ImGui::TextColored(kMuted, "キー設定");
+                ImGui::TextColored(kMuted, "KEYBIND");
                 const bool binding = InputManager::instance().binding_module() == module;
-                const std::string keyLabel = binding ? "キーを押してください  /  DELで割り当て解除" :
-                    (module->keybind() == 0 ? "割り当てキー：未設定" : std::string("割り当てキー：") + input::get_key_name(module->keybind()));
-                if (ImGui::Button(keyLabel.c_str(), ImVec2(240.0f, 32.0f))) {
+                const std::string keyLabel = binding ? "Press a key... (DEL to clear)" :
+                    (module->keybind() == 0 ? "Key: Not set" : std::string("Key: ") + input::get_key_name(module->keybind()));
+                if (ImGui::Button(keyLabel.c_str(), ImVec2(210.0f, 30.0f))) {
                     InputManager::instance().begin_binding(module);
                 }
+                ImGui::SameLine();
                 bool hold = module->hold_to_enable();
-                if (ImGui::Checkbox("キーを押している間だけ有効", &hold)) module->set_hold_to_enable(hold);
+                if (ImGui::Checkbox("Hold", &hold)) module->set_hold_to_enable(hold);
 
                 ImGui::Spacing();
                 ImGui::Separator();
-                ImGui::TextColored(kMuted, "機能の設定");
+                ImGui::TextColored(kMuted, "SETTINGS");
                 if (module->has_settings()) {
                     module->on_settings_render();
                 } else {
-                    ImGui::TextColored(kMuted, "このモジュールに追加設定はありません。");
+                    ImGui::TextColored(kMuted, "No additional settings.");
                 }
             } else {
-                ImGui::TextColored(kAccent, "機能を選択してください");
+                ImGui::TextColored(kAccent, "SELECT A FEATURE");
                 ImGui::Spacing();
-                ImGui::TextWrapped("左側の機能一覧から選択すると、ここに説明・有効化ボタン・キー設定・各種設定が表示されます。");
+                ImGui::TextWrapped("Select a feature to view its controls and settings.");
                 ImGui::Spacing();
-                ImGui::TextColored(kMuted, "CHANTERCLIENT / Minecraft Bedrock 操作環境");
+                ImGui::TextColored(kMuted, "CHANTERCLIENT / Minecraft Bedrock");
             }
             ImGui::EndChild();
+            if (compactWorkspace) ImGui::PopStyleVar(2);
 
             ImGui::Spacing();
-            ImGui::TextColored(kMuted, "DEL / BACKSPACE：キー割り当て解除  ・  ESC：キー設定をキャンセル、またはパネルを閉じる");
+            ImGui::TextColored(kMuted, "INSERT: Toggle  |  DEL: Clear key  |  ESC: Cancel / Close");
         }
         ImGui::End();
 
