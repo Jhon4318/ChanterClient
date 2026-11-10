@@ -160,8 +160,8 @@ namespace clickgui {
         }
 
         if (!g_ui.layoutInitialized) {
-            const float windowWidth = ImMin(1040.0f, ImMax(760.0f, io.DisplaySize.x - 40.0f));
-            const float windowHeight = ImMin(700.0f, ImMax(540.0f, io.DisplaySize.y - 40.0f));
+            const float windowWidth = std::min(1040.0f, std::max(760.0f, io.DisplaySize.x - 40.0f));
+            const float windowHeight = std::min(700.0f, std::max(540.0f, io.DisplaySize.y - 40.0f));
             ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
             ImGui::SetNextWindowPos(
                 ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f),
@@ -187,7 +187,7 @@ namespace clickgui {
             const float lineHeight = ImGui::GetTextLineHeight();
             const float groupHeight = lineHeight * 2.0f + ImGui::GetStyle().ItemSpacing.y;
             const float contentHeight = ImGui::GetContentRegionAvail().y;
-            const float groupTop = ImMax(0.0f, (contentHeight - groupHeight) * 0.5f);
+            const float groupTop = std::max(0.0f, (contentHeight - groupHeight) * 0.5f);
             const float centerLine = groupTop + (groupHeight - lineHeight) * 0.5f;
 
             ImGui::SetCursorPos(ImVec2(14.0f, centerLine));
@@ -212,7 +212,7 @@ namespace clickgui {
             ImGui::Spacing();
             const float footerReserve = ImGui::GetTextLineHeightWithSpacing() +
                 ImGui::GetStyle().ItemSpacing.y;
-            const float bodyHeight = ImMax(120.0f, ImGui::GetContentRegionAvail().y - footerReserve);
+            const float bodyHeight = std::max(120.0f, ImGui::GetContentRegionAvail().y - footerReserve);
             const float sideWidth = 176.0f;
             const float listWidth = 292.0f;
 
