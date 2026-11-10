@@ -108,18 +108,24 @@ bool ContainerTransfer::prepare_block_use(
     const std::string& blockId, std::int32_t x,
     std::int32_t y, std::int32_t z, bool firstEvent) {
     std::lock_guard lock(m_mutex);
-    if (!enabled() || !firstEvent) return false;
+    if (!firstEvent || !enabled()) return false;
 
     if (!minecraft::container_ui::available()) {
         LOG_WARN("[ContainerTransfer] Hidden container support is unavailable for this Bedrock build.");
         return false;
     }
-    if (m_phase != Phase::Idle || minecraft::container_ui::has_hidden_screen()) {
-        return false;
-    }
-
     const bool source = matches_block_list(m_sourceBlocks, blockId);
     const bool destination = matches_block_list(m_destinationBlocks, blockId);
+
+    // A second real block click supersedes an earlier click whose container UI
+    // has not appeared yet. This prevents a later unrelated container from being
+    // mistaken for the first click's screen.
+    if (m_phase == Phase::Opening) {
+        minecraft::container_ui::cancel_pending_open();
+        reset_transfer();
+    } else if (m_phase != Phase::Idle || minecraft::container_ui::has_hidden_screen()) {
+        return false;
+    }
     if (!source && !destination) return false;
 
     if (source && destination) {
@@ -400,7 +406,9 @@ void ContainerTransfer::on_container_tick() {
 
 void ContainerTransfer::on_container_lost() {
     std::lock_guard lock(m_mutex);
-    if (m_phase != Phase::Idle && m_phase != Phase::Closing) {
+    if (m_phase == Phase::Opening) {
+        LOG_WARN("[ContainerTransfer] The clicked block did not produce a capturable container screen; no items were moved.");
+    } else if (m_phase != Phase::Idle && m_phase != Phase::Closing) {
         LOG_WARN("[ContainerTransfer] The hidden container closed unexpectedly; the transfer was stopped.");
     } else if (m_phase == Phase::Closing && m_moved) {
         LOG_INFO("[ContainerTransfer] Container transfer session ended.");

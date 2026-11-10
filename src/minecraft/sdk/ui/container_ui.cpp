@@ -8,6 +8,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -89,10 +90,13 @@ ScreenState g_screen;
 OffstackState g_offstack;
 Listener* g_listener = nullptr;
 
-// The block-use hook arms only the current game-thread call. The matching
-// container controller must be constructed on that same thread.
-thread_local bool t_expectedOpen = false;
-thread_local void* t_constructedController = nullptr;
+// Bedrock may construct and push the container screen on a later client tick,
+ // after GameMode::useItemOn has returned. Keep a short, cross-thread capture
+ // window so the matching controller can still be captured without showing it.
+constexpr std::uint64_t kPendingOpenTimeoutMs = 2500;
+std::atomic<bool> g_expectedOpen{false};
+std::atomic<void*> g_constructedController{nullptr};
+std::atomic<std::uint64_t> g_pendingOpenSince{0};
 
 bool read_pointer(const void* address, void** output) noexcept {
     if (address == nullptr || output == nullptr) return false;
@@ -364,22 +368,34 @@ bool capture_offstack(void* scene, void* controller) {
 
 void* __fastcall hook_screen_ctor(void* self, void* a2, void* a3, void* a4) {
     void* result = g_screenCtor != nullptr ? g_screenCtor(self, a2, a3, a4) : self;
-    if (t_expectedOpen && self != nullptr) {
-        t_constructedController = self;
+    if (g_expectedOpen.load(std::memory_order_acquire) && self != nullptr) {
+        void* expected = nullptr;
+        g_constructedController.compare_exchange_strong(
+            expected, self, std::memory_order_release, std::memory_order_relaxed);
     }
     return result;
 }
 
 void __fastcall hook_scene_stack_push(void* stack, void* scene, void* a3, void* a4) {
-    if (t_expectedOpen && t_constructedController != nullptr && g_offstack.sceneObject == nullptr) {
-        void* controller = t_constructedController;
-        if (capture_offstack(scene, controller)) {
-            t_expectedOpen = false;
-            t_constructedController = nullptr;
-            if (g_listener != nullptr) {
-                g_listener->on_container_opened(controller);
+    if (g_expectedOpen.load(std::memory_order_acquire) &&
+        g_offstack.sceneObject == nullptr) {
+        void* controller = g_constructedController.load(std::memory_order_acquire);
+        if (controller != nullptr) {
+            if (capture_offstack(scene, controller)) {
+                cancel_pending_open();
+                if (g_listener != nullptr) {
+                    g_listener->on_container_opened(controller);
+                }
+                return; // Keep the container screen off the visible scene stack.
             }
-            return; // Deliberately do not add this container screen to the visible scene stack.
+
+            // A matching controller was constructed, but its scene could not be
+            // safely captured. Leave vanilla UI behavior intact and abort transfer.
+            LOG_WARN("[ContainerUI] The container scene could not be captured; leaving the UI visible.");
+            cancel_pending_open();
+            if (g_listener != nullptr) {
+                g_listener->on_container_lost();
+            }
         }
     }
 
@@ -511,32 +527,25 @@ bool available() {
 
 void arm_next_open() {
     if (!g_available) return;
-    t_expectedOpen = true;
-    t_constructedController = nullptr;
+    g_constructedController.store(nullptr, std::memory_order_relaxed);
+    g_pendingOpenSince.store(GetTickCount64(), std::memory_order_relaxed);
+    g_expectedOpen.store(true, std::memory_order_release);
 }
 
 bool complete_user_open(bool gameAccepted) {
-    const bool captured = g_offstack.sceneObject != nullptr &&
-        g_offstack.controller != nullptr && g_offstack.threadId == GetCurrentThreadId();
-
-    t_expectedOpen = false;
-    t_constructedController = nullptr;
-
-    if (!gameAccepted || !captured) {
-        // prepare_block_use refuses to start while another hidden screen is active,
-        // so any captured scene here belongs to this attempted click even if the
-        // controller was created on a different thread.
-        if (g_offstack.sceneObject != nullptr || g_offstack.sharedCounts != nullptr) {
-            release_offstack_internal();
-        }
-        return false;
+    // The screen may be created from a later UI update, not inside useItemOn.
+    // A non-success interaction result is therefore not sufficient reason to
+    // cancel the watch; the bounded timeout below will fail open safely.
+    if (!gameAccepted) {
+        LOG_INFO("[ContainerUI] No immediate interaction success; waiting briefly for a deferred container screen.");
     }
-    return true;
+    return has_hidden_screen() || g_expectedOpen.load(std::memory_order_acquire);
 }
 
 void cancel_pending_open() {
-    t_expectedOpen = false;
-    t_constructedController = nullptr;
+    g_expectedOpen.store(false, std::memory_order_release);
+    g_constructedController.store(nullptr, std::memory_order_release);
+    g_pendingOpenSince.store(0, std::memory_order_release);
 }
 
 bool has_hidden_screen() {
@@ -550,6 +559,27 @@ void* screen_controller() {
 }
 
 bool tick_offstack_screen() {
+    // Do not require SceneStack::push to happen inside useItemOn. Wait for the
+    // asynchronous screen creation, but expire the request so unrelated screens
+    // are never hidden indefinitely.
+    if (g_expectedOpen.load(std::memory_order_acquire)) {
+        const std::uint64_t since = g_pendingOpenSince.load(std::memory_order_acquire);
+        const std::uint64_t now = GetTickCount64();
+        if (since != 0 && now - since >= kPendingOpenTimeoutMs) {
+            bool expected = true;
+            if (g_expectedOpen.compare_exchange_strong(
+                    expected, false, std::memory_order_acq_rel, std::memory_order_relaxed)) {
+                g_constructedController.store(nullptr, std::memory_order_release);
+                g_pendingOpenSince.store(0, std::memory_order_release);
+                LOG_WARN("[ContainerUI] No container screen appeared within {} ms; leaving vanilla UI behavior unchanged.",
+                         kPendingOpenTimeoutMs);
+                if (g_listener != nullptr) {
+                    g_listener->on_container_lost();
+                }
+            }
+        }
+    }
+
     if (!has_hidden_screen()) return false;
 
     if (GetCurrentThreadId() != g_offstack.threadId) {

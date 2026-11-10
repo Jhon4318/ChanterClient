@@ -70,9 +70,9 @@ namespace {
             targetBlock, isFirstEvent);
 
         if (transferPrepared) {
-            const bool captured = minecraft::container_ui::complete_user_open(
+            const bool capturePending = minecraft::container_ui::complete_user_open(
                 result != nullptr && result->mSuccess);
-            if (!captured) {
+            if (!capturePending) {
                 transfer->on_open_attempt_failed();
             }
         }
