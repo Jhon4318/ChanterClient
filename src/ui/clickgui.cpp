@@ -160,8 +160,9 @@ namespace clickgui {
         }
 
         if (!g_ui.layoutInitialized) {
-            const float windowWidth = std::min(1040.0f, std::max(760.0f, io.DisplaySize.x - 40.0f));
-            const float windowHeight = std::min(700.0f, std::max(540.0f, io.DisplaySize.y - 40.0f));
+            // Fit the panel inside the current viewport, including smaller game windows.
+            const float windowWidth = std::max(480.0f, std::min(1040.0f, io.DisplaySize.x - 32.0f));
+            const float windowHeight = std::max(360.0f, std::min(700.0f, io.DisplaySize.y - 32.0f));
             ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
             ImGui::SetNextWindowPos(
                 ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f),
@@ -177,23 +178,26 @@ namespace clickgui {
         if (ImGui::Begin("CHANTERCLIENT     /     CONTROL PANEL", &open, flags)) {
             // Header: identity and runtime status, deliberately styled as a single app dashboard.
             ImGui::PushStyleColor(ImGuiCol_ChildBg, kRaisedBg);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 8.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 10.0f));
             ImGui::BeginChild(
                 "##topbar",
-                ImVec2(0, 74.0f),
+                ImVec2(0, 78.0f),
                 true,
                 ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
+            // SetCursorPos uses window-local coordinates. Include the inner
+            // padding origin when centering content to avoid clipping the first line.
+            const ImVec2 contentStart = ImGui::GetCursorPos();
             const float lineHeight = ImGui::GetTextLineHeight();
             const float groupHeight = lineHeight * 2.0f + ImGui::GetStyle().ItemSpacing.y;
             const float contentHeight = ImGui::GetContentRegionAvail().y;
-            const float groupTop = std::max(0.0f, (contentHeight - groupHeight) * 0.5f);
+            const float groupTop = contentStart.y + std::max(0.0f, (contentHeight - groupHeight) * 0.5f);
             const float centerLine = groupTop + (groupHeight - lineHeight) * 0.5f;
 
-            ImGui::SetCursorPos(ImVec2(14.0f, centerLine));
+            ImGui::SetCursorPos(ImVec2(16.0f, centerLine));
             ImGui::TextColored(kAccent, "CC");
 
-            ImGui::SetCursorPos(ImVec2(58.0f, groupTop));
+            ImGui::SetCursorPos(ImVec2(60.0f, groupTop));
             ImGui::BeginGroup();
             ImGui::Text("CHANTERCLIENT");
             ImGui::TextColored(kMuted, "Minecraft Bedrock Edition 1.26.60");
@@ -201,8 +205,9 @@ namespace clickgui {
 
             const char* sessionText = "●  Session Active";
             const float sessionWidth = ImGui::CalcTextSize(sessionText).x;
-            const float contentRight = ImGui::GetWindowContentRegionMax().x;
-            ImGui::SetCursorPos(ImVec2(contentRight - sessionWidth, centerLine));
+            const float contentRight = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x;
+            const float sessionX = std::max(contentStart.x, contentRight - sessionWidth);
+            ImGui::SetCursorPos(ImVec2(sessionX, centerLine));
             ImGui::TextColored(kWarm, "%s", sessionText);
 
             ImGui::EndChild();
