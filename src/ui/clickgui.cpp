@@ -38,15 +38,16 @@ namespace {
         return module->name();
     }
 
-    const ImVec4 kWindowBg{ 0.035f, 0.043f, 0.060f, 0.985f };
-    const ImVec4 kPanelBg{ 0.060f, 0.073f, 0.098f, 1.0f };
-    const ImVec4 kRaisedBg{ 0.085f, 0.103f, 0.136f, 1.0f };
-    const ImVec4 kBorder{ 0.16f, 0.19f, 0.25f, 0.9f };
-    const ImVec4 kText{ 0.91f, 0.93f, 0.97f, 1.0f };
-    const ImVec4 kMuted{ 0.52f, 0.58f, 0.68f, 1.0f };
-    const ImVec4 kAccent{ 0.32f, 0.72f, 0.88f, 1.0f };
-    const ImVec4 kAccentDim{ 0.12f, 0.28f, 0.36f, 1.0f };
-    const ImVec4 kWarm{ 0.96f, 0.64f, 0.34f, 1.0f };
+    // Light theme for the entire client operation panel.
+    const ImVec4 kWindowBg{ 0.965f, 0.973f, 0.984f, 0.995f };
+    const ImVec4 kPanelBg{ 1.000f, 1.000f, 1.000f, 1.000f };
+    const ImVec4 kRaisedBg{ 0.940f, 0.953f, 0.973f, 1.000f };
+    const ImVec4 kBorder{ 0.835f, 0.865f, 0.905f, 1.000f };
+    const ImVec4 kText{ 0.120f, 0.155f, 0.205f, 1.000f };
+    const ImVec4 kMuted{ 0.390f, 0.445f, 0.515f, 1.000f };
+    const ImVec4 kAccent{ 0.145f, 0.390f, 0.690f, 1.000f };
+    const ImVec4 kAccentDim{ 0.875f, 0.925f, 0.980f, 1.000f };
+    const ImVec4 kWarm{ 0.690f, 0.390f, 0.120f, 1.000f };
 
     void apply_jhon_style() {
         ImGuiStyle& s = ImGui::GetStyle();
@@ -61,7 +62,7 @@ namespace {
         s.ScrollbarRounding = 8.0f;
         s.WindowBorderSize = 1.0f;
         s.ChildBorderSize = 1.0f;
-        s.FrameBorderSize = 0.0f;
+        s.FrameBorderSize = 1.0f;
 
         auto* c = s.Colors;
         c[ImGuiCol_WindowBg] = kWindowBg;
@@ -70,21 +71,27 @@ namespace {
         c[ImGuiCol_Border] = kBorder;
         c[ImGuiCol_Text] = kText;
         c[ImGuiCol_TextDisabled] = kMuted;
-        c[ImGuiCol_FrameBg] = kRaisedBg;
-        c[ImGuiCol_FrameBgHovered] = ImVec4(0.12f, 0.16f, 0.21f, 1.0f);
-        c[ImGuiCol_FrameBgActive] = kAccentDim;
+        c[ImGuiCol_FrameBg] = ImVec4(0.965f, 0.973f, 0.984f, 1.0f);
+        c[ImGuiCol_FrameBgHovered] = ImVec4(0.920f, 0.945f, 0.975f, 1.0f);
+        c[ImGuiCol_FrameBgActive] = ImVec4(0.870f, 0.920f, 0.975f, 1.0f);
         c[ImGuiCol_Button] = kRaisedBg;
-        c[ImGuiCol_ButtonHovered] = ImVec4(0.14f, 0.20f, 0.27f, 1.0f);
-        c[ImGuiCol_ButtonActive] = kAccentDim;
+        c[ImGuiCol_ButtonHovered] = ImVec4(0.885f, 0.930f, 0.980f, 1.0f);
+        c[ImGuiCol_ButtonActive] = ImVec4(0.825f, 0.895f, 0.970f, 1.0f);
         c[ImGuiCol_Header] = kAccentDim;
-        c[ImGuiCol_HeaderHovered] = ImVec4(0.14f, 0.24f, 0.31f, 1.0f);
-        c[ImGuiCol_HeaderActive] = kAccent;
+        c[ImGuiCol_HeaderHovered] = ImVec4(0.825f, 0.895f, 0.970f, 1.0f);
+        c[ImGuiCol_HeaderActive] = ImVec4(0.760f, 0.855f, 0.955f, 1.0f);
         c[ImGuiCol_CheckMark] = kAccent;
         c[ImGuiCol_SliderGrab] = kAccent;
-        c[ImGuiCol_SliderGrabActive] = kWarm;
+        c[ImGuiCol_SliderGrabActive] = ImVec4(0.100f, 0.315f, 0.590f, 1.0f);
         c[ImGuiCol_Separator] = kBorder;
         c[ImGuiCol_TitleBg] = kPanelBg;
         c[ImGuiCol_TitleBgActive] = kPanelBg;
+        c[ImGuiCol_ScrollbarBg] = ImVec4(0.940f, 0.950f, 0.965f, 1.0f);
+        c[ImGuiCol_ScrollbarGrab] = ImVec4(0.740f, 0.785f, 0.840f, 1.0f);
+        c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.640f, 0.705f, 0.790f, 1.0f);
+        c[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.500f, 0.610f, 0.760f, 1.0f);
+        c[ImGuiCol_TextSelectedBg] = ImVec4(0.600f, 0.760f, 0.940f, 0.45f);
+        c[ImGuiCol_NavHighlight] = kAccent;
     }
 
     bool category_button(const std::string& label, bool active) {
@@ -246,7 +253,7 @@ namespace clickgui {
             ImGui::SameLine();
 
             // Right workspace: selected module details and settings.
-            ImGui::BeginChild("##module_workspace", ImVec2(0, bodyHeight), true);
+            ImGui::BeginChild("##module_workspace", ImVec2(0, bodyHeight), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
             if (g_ui.category == "Configs") {
                 draw_profiles();
             } else if (g_ui.selected) {
@@ -260,14 +267,16 @@ namespace clickgui {
 
                 const bool enabled = module->enabled();
                 if (enabled) {
-                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.32f, 0.27f, 1.0f));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.40f, 0.32f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.865f, 0.950f, 0.900f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.805f, 0.925f, 0.855f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.105f, 0.390f, 0.235f, 1.0f));
                 } else {
                     ImGui::PushStyleColor(ImGuiCol_Button, kAccentDim);
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.16f, 0.37f, 0.46f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.825f, 0.895f, 0.970f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
                 }
                 if (ImGui::Button(enabled ? "機能を無効化" : "機能を有効化", ImVec2(180.0f, 34.0f))) module->toggle();
-                ImGui::PopStyleColor(2);
+                ImGui::PopStyleColor(3);
 
                 ImGui::Spacing();
                 ImGui::Separator();
