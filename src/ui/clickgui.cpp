@@ -288,9 +288,9 @@ namespace clickgui {
             // Right workspace: selected module details and settings.
             const bool compactWorkspace = g_ui.selected != nullptr &&
                 g_ui.selected->name() == "ContainerTransfer" && g_ui.category != "Configs";
-            const ImGuiWindowFlags workspaceFlags = compactWorkspace
-                ? (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)
-                : ImGuiWindowFlags_AlwaysVerticalScrollbar;
+            const ImGuiWindowFlags workspaceFlags = g_ui.category == "Configs"
+                ? ImGuiWindowFlags_AlwaysVerticalScrollbar
+                : (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
             if (compactWorkspace) {
                 ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(7.0f, 5.0f));
                 ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 5.0f));
