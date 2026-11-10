@@ -236,7 +236,7 @@ namespace clickgui {
                     if (ImGui::Selectable(row.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(0, 42))) {
                         g_ui.selected = module;
                     }
-                    if (ImGui::IsItemHovered() && !module->tooltip().empty()) ImGui::SetTooltip("%s", module->tooltip().c_str());
+                    // Keep the feature list concise; detailed descriptions are not shown here.
                     ImGui::PopID();
                 }
             }
