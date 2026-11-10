@@ -595,6 +595,19 @@ namespace {
                 break;
             }
         }
+        if (id.empty() && typed.find(':') == std::string::npos) {
+            // A short typed name selects the first matching built-in suggestion,
+            // matching the former Enter-to-add autocomplete behavior.
+            for (const auto& option : kContainerOptions) {
+                const std::string full = lower_copy(option.id);
+                const std::string shortId = full.starts_with("minecraft:") ? full.substr(10) : full;
+                const std::string label = lower_copy(option.label);
+                if (shortId.starts_with(typed) || label.starts_with(typed)) {
+                    id.assign(option.id);
+                    break;
+                }
+            }
+        }
         if (id.empty()) {
             if (typed.find(':') == std::string::npos) return false;
             id = normalize_id(input);
@@ -818,8 +831,14 @@ namespace {
             }
         }
         if (id.empty()) {
-            if (typed.find(':') == std::string::npos) return false;
-            id = normalize_id(input);
+            const auto matches = item_suggestions(input, 1);
+            if (!matches.empty()) {
+                id.assign(matches.front());
+            } else if (typed.find(':') != std::string::npos) {
+                id = normalize_id(input);
+            } else {
+                return false;
+            }
         }
         if (!valid_resource_id(id)) return false;
 
