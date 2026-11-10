@@ -635,17 +635,21 @@ namespace {
 
         static char sourceSearch[160]{};
         static char destinationSearch[160]{};
-        char* searchBuffer = std::string_view(widgetId) == "source" ? sourceSearch : destinationSearch;
+        char* searchBuffer = std::string_view(widgetId) == "source"
+            ? sourceSearch : destinationSearch;
 
         ImGui::PushID(widgetId);
         ImGui::TextColored(ImVec4(0.145f, 0.390f, 0.690f, 1.0f), "%s", title);
         ImGui::TextWrapped("%s", description);
 
+        // Quick search is additive: the original grouped checkbox selector remains available below.
         ImGui::SetNextItemWidth(-92.0f);
         const bool submitted = ImGui::InputTextWithHint(
             "##container_search",
-            "Search by name or ID (e.g. chest, barrel, minecraft:chest)...",
-            searchBuffer, sizeof(sourceSearch), ImGuiInputTextFlags_EnterReturnsTrue);
+            "Search container name or ID...",
+            searchBuffer,
+            sizeof(sourceSearch),
+            ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::SameLine();
         if ((ImGui::Button("Add ID", ImVec2(82.0f, 0.0f)) || submitted) &&
             add_container_id(setting, oppositeSetting, searchBuffer)) {
@@ -654,33 +658,31 @@ namespace {
 
         const auto matches = container_suggestions(searchBuffer, 5);
         if (searchBuffer[0] != '\0' && !matches.empty()) {
-            ImGui::TextDisabled("Search results — select one to add");
-            ImGui::BeginChild("##container_suggestions", ImVec2(0.0f, 94.0f), true);
+            ImGui::TextDisabled("Search results — click to add");
             for (const auto* option : matches) {
                 ImGui::PushID(option->id.data());
                 const std::string label(option->label);
                 if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_None,
                                       ImVec2(0.0f, 22.0f))) {
-                    if (add_container_id(setting, oppositeSetting, option->id.data())) searchBuffer[0] = '\0';
+                    if (add_container_id(setting, oppositeSetting, option->id.data())) {
+                        searchBuffer[0] = '\0';
+                    }
                 }
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", option->id.data());
                 ImGui::PopID();
             }
-            ImGui::EndChild();
         } else if (searchBuffer[0] != '\0') {
             ImGui::TextDisabled("No built-in match. Enter a full namespace ID for an add-on block.");
-        } else {
-            ImGui::TextDisabled("Search above, or choose from the full list below.");
         }
 
         const auto selected = parse_id_list(setting->value());
-        const std::string browseLabel =
-            "Browse built-in containers (" +
-            std::to_string(sizeof(kContainerOptions) / sizeof(kContainerOptions[0])) +
-            ")  |  Selected: " + std::to_string(selected.size());
+        const std::string preview = selected.empty()
+            ? "Select container types..."
+            : std::to_string(selected.size()) + " container type(s) selected";
 
-        if (ImGui::BeginCombo("##browse_containers", browseLabel.c_str(), ImGuiComboFlags_HeightLarge)) {
-            ImGui::TextDisabled("Check each type to include it.");
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::BeginCombo("##container_types", preview.c_str(), ImGuiComboFlags_HeightLarge)) {
+            ImGui::TextDisabled("Check every container type you want to include.");
             ImGui::Separator();
             std::string lastGroup;
             const std::string query = lower_copy(searchBuffer);
@@ -688,11 +690,15 @@ namespace {
             for (const auto& option : kContainerOptions) {
                 const std::string id = lower_copy(option.id);
                 const std::string label = lower_copy(option.label);
-                const std::string shortId = id.starts_with("minecraft:") ? id.substr(10) : id;
+                const std::string shortId = id.starts_with("minecraft:")
+                    ? id.substr(10) : id;
+
                 if (!query.empty() &&
                     id.find(query) == std::string::npos &&
                     shortId.find(query) == std::string::npos &&
-                    label.find(query) == std::string::npos) continue;
+                    label.find(query) == std::string::npos) {
+                    continue;
+                }
 
                 if (lastGroup != option.group) {
                     if (!lastGroup.empty()) ImGui::Separator();
@@ -722,22 +728,21 @@ namespace {
             ImGui::EndCombo();
         }
 
-        ImGui::TextDisabled("Selected containers (%zu)", selected.size());
-        ImGui::BeginChild("##selected_containers", ImVec2(0.0f, 76.0f), true);
-        if (selected.empty()) {
-            ImGui::TextDisabled("No container types selected yet.");
+        const auto currentSelected = parse_id_list(setting->value());
+        ImGui::TextDisabled("Selected containers (%zu)", currentSelected.size());
+        if (currentSelected.empty()) {
+            ImGui::TextDisabled("No containers selected.");
         } else {
-            for (const auto& id : selected) {
+            for (const auto& id : currentSelected) {
                 ImGui::PushID(id.c_str());
                 const std::string label = container_label(id);
-                ImGui::TextUnformatted(label.c_str());
+                ImGui::BulletText("%s", label.c_str());
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", id.c_str());
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Remove")) remove_container_id(setting, id);
                 ImGui::PopID();
             }
         }
-        ImGui::EndChild();
         ImGui::PopID();
     }
 
@@ -757,7 +762,7 @@ namespace {
         const bool qualified = needle.find(':') != std::string::npos;
         for (const auto id : container_transfer_data::kVanillaItemIds) {
             const std::string_view candidate = qualified ? id : id.substr(std::string_view("minecraft:").size());
-            if (candidate.find(needle) != std::string::npos) {
+            if (candidate.starts_with(needle)) {
                 matches.push_back(id);
                 if (limit != 0 && matches.size() >= limit) break;
             }
@@ -839,71 +844,80 @@ namespace {
 
     void render_item_picker(config::StringSetting* setting) {
         if (setting == nullptr) return;
+
         static char searchBuffer[160]{};
         static ItemCompletionCycle completionCycle{};
 
         ImGui::TextColored(ImVec4(0.145f, 0.390f, 0.690f, 1.0f), "ITEM FILTER");
-        ImGui::TextWrapped("Only selected item IDs will be transferred.");
+        ImGui::TextWrapped("Only the selected item IDs will be transferred.");
 
-        ImGui::SetNextItemWidth(-92.0f);
+        ImGui::SetNextItemWidth(-1.0f);
         const bool submitted = ImGui::InputTextWithHint(
             "##item_id_search",
-            "Search item ID (e.g. iron_ingot, diamond, minecraft:gold_ingot)...",
-            searchBuffer, sizeof(searchBuffer),
+            "Example: iron_ingot / minecraft:diamond (Tab completes)",
+            searchBuffer,
+            sizeof(searchBuffer),
             ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackCompletion,
-            complete_item_on_tab, &completionCycle);
-        ImGui::SameLine();
-        if ((ImGui::Button("Add ID", ImVec2(82.0f, 0.0f)) || submitted) &&
-            add_item_from_search(setting, searchBuffer)) {
+            complete_item_on_tab,
+            &completionCycle);
+
+        if (submitted && add_item_from_search(setting, searchBuffer)) {
             set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
         }
 
-        const auto suggestions = item_suggestions(searchBuffer, 5);
+        const auto suggestions = item_suggestions(searchBuffer, 9);
         if (searchBuffer[0] != '\0' && !suggestions.empty()) {
-            ImGui::TextDisabled("Search results — select one to add");
-            ImGui::BeginChild("##item_suggestions", ImVec2(0.0f, 94.0f), true);
+            const auto allMatches = item_suggestions(searchBuffer, 0);
+            ImGui::TextDisabled("%zu matching items. Select one or use Tab to complete.", allMatches.size());
             for (const auto suggestion : suggestions) {
                 const std::string label(suggestion);
                 ImGui::PushID(label.c_str());
-                if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_None,
-                                      ImVec2(0.0f, 22.0f))) {
+                if (ImGui::Selectable(label.c_str(), false)) {
                     if (add_item_from_search(setting, label.c_str())) {
                         set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
                     }
                 }
                 ImGui::PopID();
             }
-            ImGui::EndChild();
         } else if (searchBuffer[0] != '\0') {
-            ImGui::TextDisabled("No built-in match. Enter a full namespace ID for an add-on item.");
+            ImGui::TextDisabled("No built-in match. Add-on item IDs can be entered as namespace:id.");
         } else {
-            ImGui::TextDisabled("Search an item, or enter its full namespace ID.");
+            ImGui::TextDisabled("Enter part of an item ID to see suggestions.");
+        }
+
+        if (ImGui::Button("Add entered ID", ImVec2(145.0f, 30.0f))) {
+            if (add_item_from_search(setting, searchBuffer)) {
+                set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Clear all", ImVec2(100.0f, 30.0f))) {
+            setting->set_value("");
+            persist_default_profile();
         }
 
         const auto selected = parse_id_list(setting->value());
-        ImGui::TextDisabled("Selected items (%zu)", selected.size());
-        ImGui::BeginChild("##selected_item_ids", ImVec2(0.0f, 92.0f), true);
+        ImGui::Spacing();
+        ImGui::Text("Selected items (%zu)", selected.size());
         if (selected.empty()) {
             ImGui::TextDisabled("No item IDs selected.");
         } else {
             for (const auto& id : selected) {
                 ImGui::PushID(id.c_str());
-                ImGui::TextUnformatted(id.c_str());
+                ImGui::BulletText("%s", id.c_str());
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Remove")) remove_item_id(setting, id);
                 ImGui::PopID();
             }
         }
-        ImGui::EndChild();
     }
 
 
 }
 
 void ContainerTransfer::on_settings_render() {
-    ImGui::BeginChild("##container_transfer_settings", ImVec2(0.0f, 0.0f), false,
-                      ImGuiWindowFlags_AlwaysVerticalScrollbar);
-
+    // Render directly into ClickGUI's module_workspace child.
+    // Its scrollbar is shared with the enable and key-binding controls above.
     ImGui::TextColored(ImVec4(0.145f, 0.390f, 0.690f, 1.0f), "CONTAINER TRANSFER");
     ImGui::TextWrapped("Choose one or more source containers, destination containers, and item IDs. Click a configured container in the world to transfer items without opening its screen.");
     ImGui::Spacing();
@@ -936,5 +950,4 @@ void ContainerTransfer::on_settings_render() {
     ImGui::Separator();
     ImGui::TextDisabled("A container type cannot be selected as both source and destination.");
     ImGui::TextDisabled("Changes are saved automatically to the default profile.");
-    ImGui::EndChild();
 }
