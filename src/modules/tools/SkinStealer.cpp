@@ -15,6 +15,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <iterator>
 #include <cmath>
 #include <cctype>
 #include <string>
@@ -76,8 +77,8 @@ SkinStealer::SkinStealer()
         "Save a skin by aiming at a player with the target-save key, or by selecting their gamertag from the current world roster.") {
 
     m_saveWithMiddleMouse = add_setting<config::BoolSetting>(
-        "Save with middle mouse button",
-        "Save the player under the crosshair when the middle mouse button is pressed.",
+        "Also allow middle-click save",
+        "Optional shortcut: save the player under the crosshair with the middle mouse button.",
         true
     );
 
@@ -206,20 +207,6 @@ void SkinStealer::update_aimed_player(LocalPlayer* localPlayer, ClientInstance* 
 void SkinStealer::handle_key_event(KeyEvent& event) {
     if (event.action != KeyAction::Press) return;
 
-    if (m_waitingForSaveKey.load(std::memory_order_acquire)) {
-        if (event.isMouse) return;
-        if (event.key == VK_ESCAPE) {
-            m_waitingForSaveKey.store(false, std::memory_order_release);
-            return;
-        }
-        if (event.key > 0 && event.key < 256 && m_saveKeyCode) {
-            m_saveKeyCode->set_value(event.key);
-            m_waitingForSaveKey.store(false, std::memory_order_release);
-            LOG_INFO("[SkinStealer] Save key changed to {}.", input::get_key_name(event.key));
-        }
-        return;
-    }
-
     if (InputManager::instance().is_binding() ||
         ClientInstance::isClientUiOpen() ||
         ClientInstance::isGameUiOpen()) {
@@ -260,6 +247,27 @@ void SkinStealer::on_imgui_render() {
 }
 
 void SkinStealer::on_settings_render() {
+    // The overlay consumes keyboard messages before the module event bus sees
+    // them. Poll the Win32 key edge here while the key-capture control is active.
+    if (m_waitingForSaveKey.load(std::memory_order_acquire) && m_saveKeyCode) {
+        constexpr int ignoredKeys[] = {
+            VK_LBUTTON, VK_RBUTTON, VK_CANCEL, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2,
+            VK_SHIFT, VK_LSHIFT, VK_RSHIFT, VK_CONTROL, VK_LCONTROL, VK_RCONTROL,
+            VK_MENU, VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN, VK_ESCAPE
+        };
+        for (int key = 1; key < 256; ++key) {
+            if (std::find(std::begin(ignoredKeys), std::end(ignoredKeys), key) != std::end(ignoredKeys)) {
+                continue;
+            }
+            if ((GetAsyncKeyState(key) & 1) != 0) {
+                m_saveKeyCode->set_value(key);
+                m_waitingForSaveKey.store(false, std::memory_order_release);
+                LOG_INFO("[SkinStealer] Target save key changed to {}.", input::get_key_name(key));
+                break;
+            }
+        }
+    }
+
     Module::on_settings_render();
 
     ImGui::Spacing();
@@ -274,7 +282,8 @@ void SkinStealer::on_settings_render() {
 
     ImGui::Text("Current target: %s", aimedName.empty() ? "No player in crosshair" : aimedName.c_str());
     if (m_waitingForSaveKey.load(std::memory_order_acquire)) {
-        if (ImGui::Button("Press target-save key... (ESC to cancel)", ImVec2(250.0f, 30.0f))) {
+        ImGui::TextDisabled("Press any keyboard key to assign it.");
+        if (ImGui::Button("Cancel key capture", ImVec2(170.0f, 30.0f))) {
             m_waitingForSaveKey.store(false, std::memory_order_release);
         }
     } else {
@@ -285,7 +294,8 @@ void SkinStealer::on_settings_render() {
         }
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("Aim directly at a player and press this key.");
+    ImGui::TextDisabled("Aim directly at a player and press this key to save a snapshot.");
+    ImGui::TextDisabled("Enable/Disable above controls the module; this key only saves.");
     ImGui::TextDisabled("Middle mouse can also save the aimed player when enabled below.");
 
     ImGui::Spacing();
