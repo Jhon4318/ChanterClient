@@ -505,6 +505,146 @@ namespace {
         {"minecraft:black_shulker_box", "Black Shulker Box", "Shulker Boxes"}
     };
 
+
+    void draw_container_icon(std::string_view id, const ImVec2& pos, float size) {
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        if (draw == nullptr) return;
+
+        const float scale = size / 20.0f;
+        const auto px = [scale, &pos](float x, float y) {
+            return ImVec2(pos.x + x * scale, pos.y + y * scale);
+        };
+        const auto rect = [&](float x1, float y1, float x2, float y2, ImU32 color, float rounding = 0.0f) {
+            draw->AddRectFilled(px(x1, y1), px(x2, y2), color, rounding * scale);
+        };
+        const ImU32 outline = IM_COL32(48, 54, 64, 255);
+        const bool shulker = id.find("shulker_box") != std::string_view::npos;
+        const bool copper = id.find("copper_chest") != std::string_view::npos;
+        const bool barrel = id.find("barrel") != std::string_view::npos;
+        const bool hopper = id.find("hopper") != std::string_view::npos;
+        const bool furnace = id.find("furnace") != std::string_view::npos ||
+            id.find("smoker") != std::string_view::npos;
+        const bool brewing = id.find("brewing_stand") != std::string_view::npos;
+        const bool machine = id.find("dispenser") != std::string_view::npos ||
+            id.find("dropper") != std::string_view::npos ||
+            id.find("crafter") != std::string_view::npos;
+
+        ImU32 body = IM_COL32(151, 91, 48, 255);
+        ImU32 lid = IM_COL32(190, 128, 72, 255);
+        if (copper) {
+            body = IM_COL32(174, 103, 64, 255);
+            lid = IM_COL32(207, 140, 91, 255);
+            if (id.find("oxidized") != std::string_view::npos) {
+                body = IM_COL32(71, 143, 127, 255);
+                lid = IM_COL32(113, 184, 159, 255);
+            } else if (id.find("weathered") != std::string_view::npos) {
+                body = IM_COL32(99, 151, 123, 255);
+                lid = IM_COL32(139, 186, 148, 255);
+            } else if (id.find("exposed") != std::string_view::npos) {
+                body = IM_COL32(135, 148, 99, 255);
+                lid = IM_COL32(178, 182, 119, 255);
+            }
+        }
+
+        if (shulker) {
+            body = IM_COL32(143, 88, 171, 255);
+            const auto colorFor = [&](std::string_view color) {
+                if (id.find(color) == std::string_view::npos) return;
+                if (color == "white") body = IM_COL32(225, 225, 222, 255);
+                else if (color == "orange") body = IM_COL32(226, 119, 42, 255);
+                else if (color == "magenta") body = IM_COL32(173, 62, 169, 255);
+                else if (color == "light_blue") body = IM_COL32(81, 154, 207, 255);
+                else if (color == "yellow") body = IM_COL32(220, 190, 54, 255);
+                else if (color == "lime") body = IM_COL32(111, 174, 48, 255);
+                else if (color == "pink") body = IM_COL32(212, 126, 151, 255);
+                else if (color == "gray") body = IM_COL32(83, 91, 100, 255);
+                else if (color == "light_gray") body = IM_COL32(155, 158, 153, 255);
+                else if (color == "cyan") body = IM_COL32(51, 145, 145, 255);
+                else if (color == "purple") body = IM_COL32(119, 65, 170, 255);
+                else if (color == "blue") body = IM_COL32(57, 83, 168, 255);
+                else if (color == "brown") body = IM_COL32(112, 77, 52, 255);
+                else if (color == "green") body = IM_COL32(83, 126, 55, 255);
+                else if (color == "red") body = IM_COL32(166, 57, 53, 255);
+                else if (color == "black") body = IM_COL32(49, 49, 56, 255);
+            };
+            colorFor("white"); colorFor("orange"); colorFor("magenta"); colorFor("light_blue");
+            colorFor("yellow"); colorFor("lime"); colorFor("pink"); colorFor("light_gray");
+            colorFor("gray"); colorFor("cyan"); colorFor("purple"); colorFor("blue");
+            colorFor("brown"); colorFor("green"); colorFor("red"); colorFor("black");
+            rect(3, 3, 17, 17, outline, 3);
+            rect(4, 4, 16, 16, body, 2);
+            rect(4, 4, 16, 7, IM_COL32(255, 255, 255, 48), 2);
+            rect(6, 9, 14, 11, IM_COL32(35, 39, 45, 190), 1);
+            rect(8, 12, 12, 15, IM_COL32(255, 255, 255, 75), 1);
+            return;
+        }
+
+        if (barrel) {
+            rect(3, 2, 17, 18, outline, 4);
+            rect(4, 3, 16, 17, IM_COL32(143, 91, 48, 255), 3);
+            rect(4, 5, 16, 7, IM_COL32(77, 83, 91, 255), 1);
+            rect(4, 13, 16, 15, IM_COL32(77, 83, 91, 255), 1);
+            rect(7, 8, 13, 12, IM_COL32(192, 137, 78, 255), 1);
+            return;
+        }
+
+        if (hopper) {
+            const ImVec2 hopperPoints[5]{
+                px(2, 4), px(18, 4), px(14, 12), px(12, 18), px(8, 18)
+            };
+            draw->AddConvexPolyFilled(hopperPoints, 5, IM_COL32(93, 101, 112, 255));
+            draw->AddPolyline(hopperPoints, 5, outline, ImDrawFlags_Closed, 1.0f * scale);
+            rect(8, 8, 12, 10, IM_COL32(180, 186, 194, 255), 1);
+            return;
+        }
+
+        if (brewing) {
+            rect(3, 15, 17, 18, outline, 1);
+            rect(4, 15, 16, 17, IM_COL32(161, 111, 61, 255), 1);
+            rect(8, 4, 12, 15, IM_COL32(104, 111, 124, 255), 1);
+            rect(6, 3, 14, 5, IM_COL32(181, 191, 205, 255), 1);
+            rect(6, 9, 14, 11, IM_COL32(72, 164, 193, 255), 1);
+            return;
+        }
+
+        if (furnace || machine) {
+            rect(2, 2, 18, 18, outline, 2);
+            rect(3, 3, 17, 17, IM_COL32(127, 133, 143, 255), 1);
+            rect(6, 6, 14, 14, IM_COL32(52, 58, 67, 255), 1);
+            if (furnace) {
+                rect(8, 8, 12, 13, IM_COL32(232, 126, 44, 255), 1);
+                rect(9, 7, 11, 10, IM_COL32(255, 202, 78, 255), 1);
+            } else if (id.find("crafter") != std::string_view::npos) {
+                rect(5, 5, 7, 7, IM_COL32(220, 220, 224, 255), 0);
+                rect(13, 5, 15, 7, IM_COL32(220, 220, 224, 255), 0);
+                rect(5, 13, 7, 15, IM_COL32(220, 220, 224, 255), 0);
+                rect(13, 13, 15, 15, IM_COL32(220, 220, 224, 255), 0);
+            } else {
+                rect(8, 8, 12, 12, IM_COL32(177, 185, 194, 255), 1);
+            }
+            return;
+        }
+
+        // Chest-family icons, including normal, trapped, ender and copper chests.
+        if (id.find("ender_chest") != std::string_view::npos) {
+            body = IM_COL32(55, 92, 88, 255);
+            lid = IM_COL32(78, 133, 124, 255);
+        } else if (id.find("trapped_chest") != std::string_view::npos) {
+            body = IM_COL32(143, 82, 49, 255);
+            lid = IM_COL32(188, 104, 65, 255);
+        }
+        rect(2, 5, 18, 17, outline, 2);
+        rect(3, 6, 17, 10, lid, 1);
+        rect(3, 10, 17, 16, body, 1);
+        rect(9, 10, 11, 15, IM_COL32(65, 57, 49, 255), 0);
+        rect(8, 11, 12, 13, copper ? IM_COL32(232, 207, 133, 255) :
+            (id.find("ender_chest") != std::string_view::npos ? IM_COL32(105, 226, 183, 255) :
+                IM_COL32(225, 186, 94, 255)), 1);
+        if (id.find("trapped_chest") != std::string_view::npos) {
+            rect(8, 4, 12, 6, IM_COL32(190, 56, 49, 255), 1);
+        }
+    }
+
     bool contains_id(const std::vector<std::string>& values, std::string_view id) {
         return std::find_if(values.begin(), values.end(),
             [id](const std::string& value) { return value == id; }) != values.end();
@@ -620,6 +760,25 @@ namespace {
         }
     }
 
+    std::vector<const ContainerOption*> container_suggestions(std::string_view query, std::size_t limit) {
+        const std::string needle = lower_copy(query);
+        std::vector<const ContainerOption*> matches;
+        if (needle.empty()) return matches;
+
+        for (const auto& option : kContainerOptions) {
+            const std::string id = lower_copy(option.id);
+            const std::string shortId = id.starts_with("minecraft:") ? id.substr(10) : id;
+            const std::string label = lower_copy(option.label);
+            if (label.find(needle) != std::string::npos ||
+                shortId.find(needle) != std::string::npos ||
+                id.find(needle) != std::string::npos) {
+                matches.push_back(&option);
+                if (limit != 0 && matches.size() >= limit) break;
+            }
+        }
+        return matches;
+    }
+
     void render_container_selector(const char* title, const char* widgetId,
                                    config::StringSetting* setting,
                                    config::StringSetting* oppositeSetting) {
@@ -642,9 +801,10 @@ namespace {
                     ImGui::TextDisabled("%s", option.group.data());
                     lastGroup.assign(option.group);
                 }
+
                 bool checked = contains_id(selected, option.id);
                 ImGui::PushID(option.id.data());
-                if (ImGui::Checkbox(option.label.data(), &checked)) {
+                if (ImGui::Checkbox("##container_selected", &checked)) {
                     auto values = parse_id_list(setting->value());
                     if (checked) {
                         if (!contains_id(values, option.id)) values.emplace_back(option.id);
@@ -659,8 +819,20 @@ namespace {
                     setting->set_value(join_ids(values));
                     persist_default_profile();
                 }
+
+                ImGui::SameLine(0.0f, 6.0f);
+                const float iconSize = 20.0f;
+                const ImVec2 iconStart = ImGui::GetCursorScreenPos();
+                const float rowHeight = ImGui::GetFrameHeight();
+                draw_container_icon(option.id,
+                    ImVec2(iconStart.x, iconStart.y + (rowHeight - iconSize) * 0.5f), iconSize);
+                ImGui::Dummy(ImVec2(iconSize, rowHeight));
+                ImGui::SameLine(0.0f, 6.0f);
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(option.label.data());
                 ImGui::PopID();
             }
+
             const auto current = parse_id_list(setting->value());
             bool hasCustom = false;
             for (const auto& id : current) {
@@ -672,18 +844,68 @@ namespace {
                     }
                     bool checked = true;
                     ImGui::PushID(id.c_str());
-                    if (ImGui::Checkbox(id.c_str(), &checked) && !checked) remove_container_id(setting, id);
+                    if (ImGui::Checkbox("##custom_container_selected", &checked) && !checked) {
+                        remove_container_id(setting, id);
+                    }
+                    ImGui::SameLine(0.0f, 6.0f);
+                    const ImVec2 iconStart = ImGui::GetCursorScreenPos();
+                    draw_container_icon(id,
+                        ImVec2(iconStart.x, iconStart.y + (ImGui::GetFrameHeight() - 20.0f) * 0.5f), 20.0f);
+                    ImGui::Dummy(ImVec2(20.0f, ImGui::GetFrameHeight()));
+                    ImGui::SameLine(0.0f, 6.0f);
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::TextUnformatted(id.c_str());
                     ImGui::PopID();
                 }
             }
             ImGui::EndCombo();
         }
+
         ImGui::SetNextItemWidth(-62.0f);
-        const bool submitted = ImGui::InputTextWithHint("##container_search", "Search name or namespace:id",
+        const bool submitted = ImGui::InputTextWithHint(
+            "##container_search", "Type a container name or namespace:id...",
             searchBuffer, sizeof(sourceSearch), ImGuiInputTextFlags_EnterReturnsTrue);
+        const ImVec2 searchMin = ImGui::GetItemRectMin();
+        const ImVec2 searchMax = ImGui::GetItemRectMax();
+        const bool searchActive = ImGui::IsItemActive();
+        const auto matches = container_suggestions(searchBuffer, 12);
+
         ImGui::SameLine();
-        if ((ImGui::Button("Add", ImVec2(54.0f, 0.0f)) || submitted) &&
-            add_container_id(setting, oppositeSetting, searchBuffer)) searchBuffer[0] = '\0';
+        const bool addClicked = ImGui::Button("Add", ImVec2(54.0f, 0.0f));
+        if ((addClicked || submitted) &&
+            add_container_id(setting, oppositeSetting, searchBuffer)) {
+            searchBuffer[0] = '\0';
+        }
+
+        if (searchActive && searchBuffer[0] != '\0' && !matches.empty()) {
+            ImGui::OpenPopup("##container_suggestions");
+        }
+        ImGui::SetNextWindowPos(
+            ImVec2(searchMin.x, searchMax.y + 3.0f), ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(
+            ImVec2(searchMax.x - searchMin.x, 190.0f), ImGuiCond_Appearing);
+        if (ImGui::BeginPopup("##container_suggestions",
+                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoSavedSettings)) {
+            for (const auto* option : matches) {
+                ImGui::PushID(option->id.data());
+                const ImVec2 iconStart = ImGui::GetCursorScreenPos();
+                const float rowHeight = ImGui::GetFrameHeight();
+                draw_container_icon(option->id,
+                    ImVec2(iconStart.x, iconStart.y + (rowHeight - 20.0f) * 0.5f), 20.0f);
+                ImGui::Dummy(ImVec2(20.0f, rowHeight));
+                ImGui::SameLine(0.0f, 6.0f);
+                const std::string label =
+                    std::string(option->label) + "  (" + std::string(option->id) + ")";
+                if (ImGui::Selectable(label.c_str())) {
+                    add_container_id(setting, oppositeSetting, option->id.data());
+                    searchBuffer[0] = '\0';
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndPopup();
+        }
         ImGui::PopID();
     }
 
@@ -702,8 +924,10 @@ namespace {
 
         const bool qualified = needle.find(':') != std::string::npos;
         for (const auto id : container_transfer_data::kVanillaItemIds) {
-            const std::string_view candidate = qualified ? id : id.substr(std::string_view("minecraft:").size());
-            if (candidate.starts_with(needle)) {
+            const std::string_view candidate = qualified
+                ? id
+                : id.substr(std::string_view("minecraft:").size());
+            if (candidate.find(needle) != std::string_view::npos) {
                 matches.push_back(id);
                 if (limit != 0 && matches.size() >= limit) break;
             }
@@ -810,21 +1034,65 @@ namespace {
             }
             ImGui::EndCombo();
         }
+
         ImGui::SetNextItemWidth(-118.0f);
-        const bool submitted = ImGui::InputTextWithHint("##item_id_search", "Item name or namespace:id (Tab)",
-            searchBuffer, sizeof(searchBuffer),
+        const bool submitted = ImGui::InputTextWithHint(
+            "##item_id_search",
+            "Type an item name or ID... (Tab to cycle)",
+            searchBuffer,
+            sizeof(searchBuffer),
             ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackCompletion,
-            complete_item_on_tab, &completionCycle);
+            complete_item_on_tab,
+            &completionCycle);
+
+        const ImVec2 searchMin = ImGui::GetItemRectMin();
+        const ImVec2 searchMax = ImGui::GetItemRectMax();
+        const bool searchActive = ImGui::IsItemActive();
+        const auto matches = item_suggestions(searchBuffer, 12);
+
         ImGui::SameLine();
         if ((ImGui::Button("Add", ImVec2(52.0f, 0.0f)) || submitted) &&
-            add_item_from_search(setting, searchBuffer))
+            add_item_from_search(setting, searchBuffer)) {
             set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
+        }
         ImGui::SameLine();
         if (ImGui::Button("Clear", ImVec2(56.0f, 0.0f))) {
             setting->set_value("");
             persist_default_profile();
         }
+
+        // Open a live suggestion dropdown while the input has focus. The list
+        // narrows as each character is typed; Tab still cycles the same matches.
+        if (searchActive && searchBuffer[0] != '\0' && !matches.empty()) {
+            ImGui::OpenPopup("##item_autocomplete");
+        }
+        ImGui::SetNextWindowPos(
+            ImVec2(searchMin.x, searchMax.y + 3.0f), ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(
+            ImVec2(searchMax.x - searchMin.x, 210.0f), ImGuiCond_Appearing);
+        if (ImGui::BeginPopup("##item_autocomplete",
+                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoSavedSettings)) {
+            for (const auto id : matches) {
+                const std::string shortName(
+                    id.starts_with("minecraft:") ? id.substr(10) : id);
+                std::string label = shortName;
+                std::replace(label.begin(), label.end(), '_', ' ');
+                ImGui::PushID(id.data());
+                if (ImGui::Selectable(label.c_str())) {
+                    if (add_item_from_search(setting, id.data())) {
+                        set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
+                    }
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("%.*s", static_cast<int>(id.size()), id.data());
+                ImGui::PopID();
+            }
+            ImGui::EndPopup();
+        }
     }
+
 
 
 }

@@ -32,24 +32,31 @@ void Watermark::on_imgui_render() {
     const ImVec2 min = origin;
     const ImVec2 max{ origin.x + width, origin.y + height };
 
-    drawList->AddRectFilled(min, max, IM_COL32(15, 19, 27, 220), 7.0f);
-    drawList->AddRect(min, max, IM_COL32(44, 190, 147, 230), 7.0f, 0, 1.0f);
+    // A bright, white card with dark lettering to match the light ClickGUI.
+    drawList->AddRectFilled(
+        ImVec2(min.x + 1.0f, min.y + 2.0f),
+        ImVec2(max.x + 1.0f, max.y + 3.0f),
+        IM_COL32(25, 35, 48, 28),
+        7.0f
+    );
+    drawList->AddRectFilled(min, max, IM_COL32(255, 255, 255, 246), 7.0f);
+    drawList->AddRect(min, max, IM_COL32(211, 220, 231, 255), 7.0f, 0, 1.0f);
     drawList->AddRectFilled(
         ImVec2(min.x, min.y + 5.0f),
         ImVec2(min.x + 3.0f, max.y - 5.0f),
-        IM_COL32(44, 210, 160, 255),
+        IM_COL32(46, 126, 190, 255),
         1.5f
     );
 
     const float textY = origin.y + verticalPadding;
     drawList->AddText(
         ImVec2(origin.x + horizontalPadding, textY),
-        IM_COL32(244, 247, 250, 255),
+        IM_COL32(35, 45, 58, 255),
         brand
     );
     drawList->AddText(
         ImVec2(origin.x + horizontalPadding + brandSize.x + gap, textY),
-        IM_COL32(150, 164, 180, 255),
+        IM_COL32(112, 124, 140, 255),
         version
     );
 }

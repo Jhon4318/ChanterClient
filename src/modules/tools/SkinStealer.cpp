@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -72,7 +73,7 @@ bool ray_intersects_aabb(
 
 SkinStealer::SkinStealer()
     : Module("Tools", "SkinStealer",
-        "Save player skins from the current Bedrock world. Select a player from the roster or aim at them and use the save key.") {
+        "Save a skin by aiming at a player with the target-save key, or by selecting their gamertag from the current world roster.") {
 
     m_saveWithMiddleMouse = add_setting<config::BoolSetting>(
         "Save with middle mouse button",
@@ -263,59 +264,96 @@ void SkinStealer::on_settings_render() {
 
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::Text("TARGETING");
+    ImGui::Text("AIM AT PLAYER - QUICK SAVE");
 
     std::string aimedName;
     {
         std::lock_guard lock(m_aimedPlayerMutex);
         aimedName = m_aimedPlayerName;
     }
-    ImGui::Text("Aimed player: %s", aimedName.empty() ? "None" : aimedName.c_str());
 
+    ImGui::Text("Current target: %s", aimedName.empty() ? "No player in crosshair" : aimedName.c_str());
     if (m_waitingForSaveKey.load(std::memory_order_acquire)) {
-        if (ImGui::Button("Press a key... (ESC to cancel)", ImVec2(220.0f, 30.0f))) {
+        if (ImGui::Button("Press target-save key... (ESC to cancel)", ImVec2(250.0f, 30.0f))) {
             m_waitingForSaveKey.store(false, std::memory_order_release);
         }
     } else {
-        const std::string keyLabel = std::string("Save key: ") +
+        const std::string keyLabel = std::string("Target save key: ") +
             input::get_key_name(m_saveKeyCode ? m_saveKeyCode->value() : 'K');
-        if (ImGui::Button(keyLabel.c_str(), ImVec2(170.0f, 30.0f))) {
+        if (ImGui::Button(keyLabel.c_str(), ImVec2(210.0f, 30.0f))) {
             m_waitingForSaveKey.store(true, std::memory_order_release);
         }
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("Aim at a player, then press the key.");
+    ImGui::TextDisabled("Aim directly at a player and press this key.");
+    ImGui::TextDisabled("Middle mouse can also save the aimed player when enabled below.");
 
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::Text("ONLINE PLAYERS");
+    ImGui::Text("SAVE BY GAMERTAG");
 
     const auto players = minecraft::skin::online_players();
-    ImGui::TextDisabled("%zu players detected in received player-list packets.", players.size());
+    static char gamertagSearch[96]{};
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint(
+        "##skin_gamertag_search",
+        "Search a gamertag in the current world...",
+        gamertagSearch,
+        sizeof(gamertagSearch));
+
+    std::string needle(gamertagSearch);
+    std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+
+    std::size_t visiblePlayers = 0;
+    for (const auto& player : players) {
+        std::string name = player.player_name;
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        if (needle.empty() || name.find(needle) != std::string::npos) {
+            ++visiblePlayers;
+        }
+    }
+
+    ImGui::TextDisabled(
+        "%zu matching gamertags / %zu players received from this world.",
+        visiblePlayers, players.size());
 
     ImGui::BeginChild(
-        "##skin_online_players",
-        ImVec2(0.0f, 150.0f),
+        "##skin_gamertag_players",
+        ImVec2(0.0f, 184.0f),
         true,
         ImGuiWindowFlags_AlwaysVerticalScrollbar);
 
     if (players.empty()) {
-        ImGui::TextWrapped("No players detected yet. Enable SkinStealer before joining a world so their skin data can be received.");
+        ImGui::TextWrapped(
+            "No gamertags have been received yet. Enable SkinStealer before joining the world.");
+    } else if (visiblePlayers == 0) {
+        ImGui::TextDisabled("No gamertags match this search.");
     } else {
         for (const auto& player : players) {
+            std::string nameLower = player.player_name;
+            std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            if (!needle.empty() && nameLower.find(needle) == std::string::npos) continue;
+
             ImGui::PushID(player.uuid.c_str());
-            ImGui::Text("%s", player.player_name.c_str());
+            ImGui::Text("Gamertag: %s", player.player_name.c_str());
             ImGui::SameLine();
             if (player.has_skin) {
                 ImGui::TextDisabled("%ux%u", player.width, player.height);
                 ImGui::SameLine();
-                if (ImGui::SmallButton("Save")) {
+                if (ImGui::SmallButton("Save snapshot")) {
                     if (!minecraft::skin::save_player_skin(player.uuid)) {
-                        LOG_WARN("[SkinStealer] Skin data for {} is not ready to save.", player.player_name);
+                        LOG_WARN("[SkinStealer] Skin data for gamertag {} is not ready to save.",
+                            player.player_name);
                     }
                 }
             } else {
-                ImGui::TextDisabled("Waiting for skin data");
+                ImGui::TextDisabled("Skin data pending");
             }
             ImGui::PopID();
         }
@@ -324,7 +362,7 @@ void SkinStealer::on_settings_render() {
 
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::Text("SKIN LIBRARY");
+    ImGui::Text("SAVED SKIN SNAPSHOTS");
 
     const auto skins = minecraft::skin::captured_skins();
     ImGui::Text("Saved snapshots: %zu", skins.size());
