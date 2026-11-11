@@ -10,6 +10,7 @@
 #include "minecraft/sdk/actor/actor.h"
 #include "minecraft/sdk/actor/local_player.h"
 #include "minecraft/sdk/client/client_instance.h"
+#include "ui/notifications.h"
 
 #include <Windows.h>
 #include <imgui.h>
@@ -98,6 +99,7 @@ SkinStealer::SkinStealer()
 void SkinStealer::on_enable() {
     if (!minecraft::skin::initialize()) {
         LOG_ERROR("[SkinStealer] Could not initialize packet hooks; the module will remain disabled.");
+        ui::notifications::warning("SkinStealer", "Could not initialize skin capture for this game build.");
         set_enabled(false);
         return;
     }
@@ -235,11 +237,15 @@ void SkinStealer::save_aimed_player() {
 
     if (uuid.empty()) {
         LOG_WARN("[SkinStealer] No player is under the crosshair. Aim directly at a player first.");
+        ui::notifications::warning("SkinStealer", "No player is under the crosshair. Aim at a player first.");
         return;
     }
 
     if (!minecraft::skin::save_player_skin(uuid)) {
         LOG_WARN("[SkinStealer] No complete skin data is available for {} yet.", playerName);
+        ui::notifications::warning("SkinStealer", "Skin data for " + playerName + " is not ready yet.");
+    } else {
+        ui::notifications::success("SkinStealer", "Saved skin snapshot for " + playerName + ".");
     }
 }
 
@@ -297,7 +303,7 @@ void SkinStealer::on_settings_render() {
     ImGui::SameLine();
     ImGui::TextDisabled("Aim directly at a player and press this key to save a snapshot.");
     ImGui::TextDisabled("Enable/Disable above controls the module; this key only saves.");
-    ImGui::TextDisabled("Middle mouse can also save the aimed player when enabled below.");
+    ImGui::TextDisabled("Middle mouse can also save the aimed player when enabled in the setting above.");
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -361,6 +367,11 @@ void SkinStealer::on_settings_render() {
                     if (!minecraft::skin::save_player_skin(player.uuid)) {
                         LOG_WARN("[SkinStealer] Skin data for gamertag {} is not ready to save.",
                             player.player_name);
+                        ui::notifications::warning("SkinStealer",
+                            "Skin data for " + player.player_name + " is not ready yet.");
+                    } else {
+                        ui::notifications::success("SkinStealer",
+                            "Saved skin snapshot for " + player.player_name + ".");
                     }
                 }
             } else {

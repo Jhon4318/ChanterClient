@@ -4,6 +4,7 @@
 #include "minecraft/sdk/ui/container_ui.h"
 #include "modules/tools/vanilla_item_ids.h"
 #include "utils/logger.h"
+#include "ui/notifications.h"
 
 #include <imgui.h>
 
@@ -131,6 +132,7 @@ bool ContainerTransfer::prepare_block_use(
 
     if (source && destination) {
         LOG_WARN("[ContainerTransfer] {} is configured as both source and destination; ignoring click.", blockId);
+        ui::notifications::warning("ContainerTransfer", "This container is selected as both source and destination.");
         return false;
     }
 
@@ -138,6 +140,7 @@ bool ContainerTransfer::prepare_block_use(
                                         : std::vector<std::string>{};
     if (itemIds.empty()) {
         LOG_WARN("[ContainerTransfer] A container was clicked, but no item IDs are configured.");
+        ui::notifications::warning("ContainerTransfer", "Choose at least one item type in the Item Filter first.");
         return false;
     }
 
@@ -162,6 +165,7 @@ void ContainerTransfer::on_open_attempt_failed() {
     std::lock_guard lock(m_mutex);
     if (m_phase == Phase::Opening) {
         LOG_WARN("[ContainerTransfer] The clicked block did not produce a capturable container screen; no items were moved.");
+        ui::notifications::warning("ContainerTransfer", "The clicked block did not open a supported container. No items were moved.");
         reset_transfer();
     }
     minecraft::container_ui::cancel_pending_open();
@@ -269,8 +273,18 @@ void ContainerTransfer::begin_closing(const char* reason) {
     m_phaseSince = GetTickCount64();
     m_inPass = false;
     m_passClicked.clear();
-    if (reason != nullptr && *reason != '\0') {
-        LOG_INFO("[ContainerTransfer] {}", reason);
+    const std::string_view message = reason != nullptr ? reason : "";
+    if (!message.empty()) LOG_INFO("[ContainerTransfer] {}", message);
+
+    if (message.find("completed") != std::string_view::npos ||
+        message.find("processed") != std::string_view::npos) {
+        ui::notifications::success("ContainerTransfer", "Filtered item transfer completed.");
+    } else if (message.find("No matching items") != std::string_view::npos) {
+        ui::notifications::info("ContainerTransfer", "No matching items were found in this container or inventory.");
+    } else if (m_moved) {
+        ui::notifications::warning("ContainerTransfer", "Transfer stopped after sending item moves. Check the container and inventory contents.");
+    } else {
+        ui::notifications::warning("ContainerTransfer", "Transfer stopped before any items were moved. Check the settings and game log.");
     }
 }
 
@@ -409,8 +423,10 @@ void ContainerTransfer::on_container_lost() {
     std::lock_guard lock(m_mutex);
     if (m_phase == Phase::Opening) {
         LOG_WARN("[ContainerTransfer] The clicked block did not produce a capturable container screen; no items were moved.");
+        ui::notifications::warning("ContainerTransfer", "The container did not open. No items were moved.");
     } else if (m_phase != Phase::Idle && m_phase != Phase::Closing) {
         LOG_WARN("[ContainerTransfer] The hidden container closed unexpectedly; the transfer was stopped.");
+        ui::notifications::warning("ContainerTransfer", "The container closed unexpectedly. Transfer was stopped.");
     } else if (m_phase == Phase::Closing && m_moved) {
         LOG_INFO("[ContainerTransfer] Container transfer session ended.");
     }
@@ -691,8 +707,10 @@ namespace {
         return result;
     }
 
-    bool persist_default_profile() {
-        return ConfigManager::instance().save_config("default");
+    bool persist_active_profile() {
+        const bool saved = ConfigManager::instance().save_active_config();
+        if (!saved) LOG_WARN("[ContainerTransfer] Could not persist the current profile.");
+        return saved;
     }
 
     std::string container_label(std::string_view id) {
@@ -716,19 +734,8 @@ namespace {
                 break;
             }
         }
-        if (id.empty() && typed.find(':') == std::string::npos) {
-            // A short typed name selects the first matching built-in suggestion,
-            // matching the former Enter-to-add autocomplete behavior.
-            for (const auto& option : kContainerOptions) {
-                const std::string full = lower_copy(option.id);
-                const std::string shortId = full.starts_with("minecraft:") ? full.substr(10) : full;
-                const std::string label = lower_copy(option.label);
-                if (shortId.starts_with(typed) || label.starts_with(typed)) {
-                    id.assign(option.id);
-                    break;
-                }
-            }
-        }
+        // Custom/add-on containers must be entered as a full namespace:id.
+        // Partial names are never silently converted to the first suggestion.
         if (id.empty()) {
             if (typed.find(':') == std::string::npos) return false;
             id = normalize_id(input);
@@ -745,7 +752,7 @@ namespace {
             oppositeSetting->set_value(join_ids(opposite));
         }
         setting->set_value(join_ids(selected));
-        persist_default_profile();
+        persist_active_profile();
         return true;
     }
 
@@ -756,7 +763,7 @@ namespace {
         remove_id(values, id);
         if (values.size() != before) {
             setting->set_value(join_ids(values));
-            persist_default_profile();
+            persist_active_profile();
         }
     }
 
@@ -785,8 +792,28 @@ namespace {
         if (setting == nullptr) return;
         static char sourceSearch[160]{};
         static char destinationSearch[160]{};
+        static std::string sourceFeedback;
+        static std::string destinationFeedback;
         char* searchBuffer = std::string_view(widgetId) == "source" ? sourceSearch : destinationSearch;
+        std::string& feedback = std::string_view(widgetId) == "source" ? sourceFeedback : destinationFeedback;
         ImGui::PushID(widgetId);
+
+        const auto toggle_id = [&](std::string_view id, bool checked) {
+            auto values = parse_id_list(setting->value());
+            if (checked) {
+                if (!contains_id(values, id)) values.emplace_back(id);
+                if (oppositeSetting != nullptr) {
+                    auto opposite = parse_id_list(oppositeSetting->value());
+                    remove_id(opposite, id);
+                    oppositeSetting->set_value(join_ids(opposite));
+                }
+            } else {
+                remove_id(values, id);
+            }
+            setting->set_value(join_ids(values));
+            persist_active_profile();
+        };
+
         const auto selected = parse_id_list(setting->value());
         const std::string preview = selected.empty() ? "Select container types..." :
             std::to_string(selected.size()) + " selected";
@@ -804,59 +831,57 @@ namespace {
 
                 bool checked = contains_id(selected, option.id);
                 ImGui::PushID(option.id.data());
-                if (ImGui::Checkbox("##container_selected", &checked)) {
-                    auto values = parse_id_list(setting->value());
-                    if (checked) {
-                        if (!contains_id(values, option.id)) values.emplace_back(option.id);
-                        if (oppositeSetting != nullptr) {
-                            auto opposite = parse_id_list(oppositeSetting->value());
-                            remove_id(opposite, option.id);
-                            oppositeSetting->set_value(join_ids(opposite));
-                        }
-                    } else {
-                        remove_id(values, option.id);
-                    }
-                    setting->set_value(join_ids(values));
-                    persist_default_profile();
-                }
-
-                ImGui::SameLine(0.0f, 6.0f);
-                const float iconSize = 20.0f;
-                const ImVec2 iconStart = ImGui::GetCursorScreenPos();
                 const float rowHeight = ImGui::GetFrameHeight();
+                const bool clicked = ImGui::Selectable("##container_option", checked,
+                    ImGuiSelectableFlags_SpanAvailWidth, ImVec2(0.0f, rowHeight));
+                const ImVec2 rowMin = ImGui::GetItemRectMin();
+                const ImVec2 rowMax = ImGui::GetItemRectMax();
+                if (clicked) {
+                    checked = !checked;
+                    toggle_id(option.id, checked);
+                }
                 draw_container_icon(option.id,
-                    ImVec2(iconStart.x, iconStart.y + (rowHeight - iconSize) * 0.5f), iconSize);
-                ImGui::Dummy(ImVec2(iconSize, rowHeight));
-                ImGui::SameLine(0.0f, 6.0f);
-                ImGui::AlignTextToFramePadding();
-                ImGui::TextUnformatted(option.label.data());
+                    ImVec2(rowMin.x + 9.0f, rowMin.y + (rowHeight - 19.0f) * 0.5f), 19.0f);
+                ImDrawList* draw = ImGui::GetWindowDrawList();
+                draw->AddText(ImVec2(rowMin.x + 36.0f, rowMin.y + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f),
+                    ImGui::GetColorU32(ImGuiCol_Text), option.label.data());
+                if (checked) {
+                    const ImVec2 p(rowMax.x - 18.0f, rowMin.y + rowHeight * 0.5f);
+                    draw->AddLine(ImVec2(p.x - 4.0f, p.y), ImVec2(p.x - 1.0f, p.y + 3.0f),
+                        ImGui::GetColorU32(ImGuiCol_CheckMark), 2.0f);
+                    draw->AddLine(ImVec2(p.x - 1.0f, p.y + 3.0f), ImVec2(p.x + 5.0f, p.y - 4.0f),
+                        ImGui::GetColorU32(ImGuiCol_CheckMark), 2.0f);
+                }
                 ImGui::PopID();
             }
 
             const auto current = parse_id_list(setting->value());
             bool hasCustom = false;
             for (const auto& id : current) {
-                if (!is_known_container(id)) {
-                    if (!hasCustom) {
-                        ImGui::Separator();
-                        ImGui::TextDisabled("Add-on");
-                        hasCustom = true;
-                    }
-                    bool checked = true;
-                    ImGui::PushID(id.c_str());
-                    if (ImGui::Checkbox("##custom_container_selected", &checked) && !checked) {
-                        remove_container_id(setting, id);
-                    }
-                    ImGui::SameLine(0.0f, 6.0f);
-                    const ImVec2 iconStart = ImGui::GetCursorScreenPos();
-                    draw_container_icon(id,
-                        ImVec2(iconStart.x, iconStart.y + (ImGui::GetFrameHeight() - 20.0f) * 0.5f), 20.0f);
-                    ImGui::Dummy(ImVec2(20.0f, ImGui::GetFrameHeight()));
-                    ImGui::SameLine(0.0f, 6.0f);
-                    ImGui::AlignTextToFramePadding();
-                    ImGui::TextUnformatted(id.c_str());
-                    ImGui::PopID();
+                if (is_known_container(id)) continue;
+                if (!hasCustom) {
+                    ImGui::Separator();
+                    ImGui::TextDisabled("Add-on");
+                    hasCustom = true;
                 }
+                ImGui::PushID(id.c_str());
+                const float rowHeight = ImGui::GetFrameHeight();
+                const bool clicked = ImGui::Selectable("##custom_container_option", true,
+                    ImGuiSelectableFlags_SpanAvailWidth, ImVec2(0.0f, rowHeight));
+                const ImVec2 rowMin = ImGui::GetItemRectMin();
+                const ImVec2 rowMax = ImGui::GetItemRectMax();
+                if (clicked) toggle_id(id, false);
+                draw_container_icon(id,
+                    ImVec2(rowMin.x + 9.0f, rowMin.y + (rowHeight - 19.0f) * 0.5f), 19.0f);
+                ImGui::GetWindowDrawList()->AddText(
+                    ImVec2(rowMin.x + 36.0f, rowMin.y + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f),
+                    ImGui::GetColorU32(ImGuiCol_Text), id.c_str());
+                const ImVec2 p(rowMax.x - 18.0f, rowMin.y + rowHeight * 0.5f);
+                ImGui::GetWindowDrawList()->AddLine(ImVec2(p.x - 4.0f, p.y), ImVec2(p.x - 1.0f, p.y + 3.0f),
+                    ImGui::GetColorU32(ImGuiCol_CheckMark), 2.0f);
+                ImGui::GetWindowDrawList()->AddLine(ImVec2(p.x - 1.0f, p.y + 3.0f), ImVec2(p.x + 5.0f, p.y - 4.0f),
+                    ImGui::GetColorU32(ImGuiCol_CheckMark), 2.0f);
+                ImGui::PopID();
             }
             ImGui::EndCombo();
         }
@@ -872,21 +897,22 @@ namespace {
 
         ImGui::SameLine();
         const bool addClicked = ImGui::Button("Add", ImVec2(54.0f, 0.0f));
-        if ((addClicked || submitted) &&
-            add_container_id(setting, oppositeSetting, searchBuffer)) {
-            searchBuffer[0] = '\0';
+        if (addClicked || submitted) {
+            if (add_container_id(setting, oppositeSetting, searchBuffer)) {
+                feedback = "Container type added.";
+                searchBuffer[0] = '\0';
+            } else {
+                feedback = "Choose a suggestion or enter an exact namespace:id.";
+            }
         }
+        if (!feedback.empty()) ImGui::TextDisabled("%s", feedback.c_str());
 
-        if (searchActive && searchBuffer[0] != '\0' && !matches.empty()) {
+        if (searchActive && searchBuffer[0] != '\0' && !matches.empty())
             ImGui::OpenPopup("##container_suggestions");
-        }
-        ImGui::SetNextWindowPos(
-            ImVec2(searchMin.x, searchMax.y + 3.0f), ImGuiCond_Appearing);
-        ImGui::SetNextWindowSize(
-            ImVec2(searchMax.x - searchMin.x, 190.0f), ImGuiCond_Appearing);
+        ImGui::SetNextWindowPos(ImVec2(searchMin.x, searchMax.y + 3.0f), ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2(searchMax.x - searchMin.x, 190.0f), ImGuiCond_Appearing);
         if (ImGui::BeginPopup("##container_suggestions",
-                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                ImGuiWindowFlags_NoSavedSettings)) {
+                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings)) {
             for (const auto* option : matches) {
                 ImGui::PushID(option->id.data());
                 const ImVec2 iconStart = ImGui::GetCursorScreenPos();
@@ -895,11 +921,14 @@ namespace {
                     ImVec2(iconStart.x, iconStart.y + (rowHeight - 20.0f) * 0.5f), 20.0f);
                 ImGui::Dummy(ImVec2(20.0f, rowHeight));
                 ImGui::SameLine(0.0f, 6.0f);
-                const std::string label =
-                    std::string(option->label) + "  (" + std::string(option->id) + ")";
+                const std::string label = std::string(option->label) + "  (" + std::string(option->id) + ")";
                 if (ImGui::Selectable(label.c_str())) {
-                    add_container_id(setting, oppositeSetting, option->id.data());
-                    searchBuffer[0] = '\0';
+                    if (add_container_id(setting, oppositeSetting, option->id.data())) {
+                        feedback = "Container type added.";
+                        searchBuffer[0] = '\0';
+                    } else {
+                        feedback = "This container type is already selected.";
+                    }
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::PopID();
@@ -983,22 +1012,22 @@ namespace {
             }
         }
         if (id.empty()) {
-            const auto matches = item_suggestions(input, 1);
-            if (!matches.empty()) {
-                id.assign(matches.front());
-            } else if (typed.find(':') != std::string::npos) {
+            if (typed.find(':') != std::string::npos) {
                 id = normalize_id(input);
             } else {
-                return false;
+                const auto matches = item_suggestions(input, 0);
+                // Do not silently add the first result when a search term has
+                // several possible matches; the user must choose one explicitly.
+                if (matches.size() != 1) return false;
+                id.assign(matches.front());
             }
         }
         if (!valid_resource_id(id)) return false;
-
         auto selected = parse_id_list(setting->value());
         if (contains_id(selected, id)) return false;
         selected.push_back(std::move(id));
         setting->set_value(join_ids(selected));
-        persist_default_profile();
+        persist_active_profile();
         return true;
     }
 
@@ -1009,7 +1038,7 @@ namespace {
         remove_id(values, id);
         if (values.size() != before) {
             setting->set_value(join_ids(values));
-            persist_default_profile();
+            persist_active_profile();
         }
     }
 
@@ -1017,6 +1046,7 @@ namespace {
         if (setting == nullptr) return;
         static char searchBuffer[160]{};
         static ItemCompletionCycle completionCycle{};
+        static std::string feedback;
         const auto selected = parse_id_list(setting->value());
         const std::string preview = selected.empty() ? "No items selected" :
             std::to_string(selected.size()) + " selected";
@@ -1029,7 +1059,10 @@ namespace {
                 ImGui::PushID(id.c_str());
                 ImGui::TextUnformatted(id.c_str());
                 ImGui::SameLine();
-                if (ImGui::SmallButton("Remove")) remove_item_id(setting, id);
+                if (ImGui::SmallButton("Remove")) {
+                    remove_item_id(setting, id);
+                    feedback = "Removed " + id + ".";
+                }
                 ImGui::PopID();
             }
             ImGui::EndCombo();
@@ -1037,51 +1070,55 @@ namespace {
 
         ImGui::SetNextItemWidth(-118.0f);
         const bool submitted = ImGui::InputTextWithHint(
-            "##item_id_search",
-            "Type an item name or ID... (Tab to cycle)",
-            searchBuffer,
-            sizeof(searchBuffer),
+            "##item_id_search", "Type an item name or ID... (Tab to cycle)",
+            searchBuffer, sizeof(searchBuffer),
             ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackCompletion,
-            complete_item_on_tab,
-            &completionCycle);
-
+            complete_item_on_tab, &completionCycle);
         const ImVec2 searchMin = ImGui::GetItemRectMin();
         const ImVec2 searchMax = ImGui::GetItemRectMax();
         const bool searchActive = ImGui::IsItemActive();
         const auto matches = item_suggestions(searchBuffer, 12);
 
         ImGui::SameLine();
-        if ((ImGui::Button("Add", ImVec2(52.0f, 0.0f)) || submitted) &&
-            add_item_from_search(setting, searchBuffer)) {
-            set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
+        const bool addClicked = ImGui::Button("Add", ImVec2(52.0f, 0.0f));
+        if (addClicked || submitted) {
+            if (add_item_from_search(setting, searchBuffer)) {
+                feedback = "Item added.";
+                set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
+            } else {
+                const auto allMatches = item_suggestions(searchBuffer, 0);
+                if (allMatches.empty())
+                    feedback = "No matching item. Use a full namespace:id for custom items.";
+                else if (allMatches.size() > 1)
+                    feedback = "Several items match. Choose the exact item from the suggestions.";
+                else
+                    feedback = "This item is already selected or the ID is invalid.";
+            }
         }
         ImGui::SameLine();
         if (ImGui::Button("Clear", ImVec2(56.0f, 0.0f))) {
             setting->set_value("");
-            persist_default_profile();
+            persist_active_profile();
+            feedback = "Item filter cleared.";
         }
 
-        // Open a live suggestion dropdown while the input has focus. The list
-        // narrows as each character is typed; Tab still cycles the same matches.
-        if (searchActive && searchBuffer[0] != '\0' && !matches.empty()) {
+        if (searchActive && searchBuffer[0] != '\0' && !matches.empty())
             ImGui::OpenPopup("##item_autocomplete");
-        }
-        ImGui::SetNextWindowPos(
-            ImVec2(searchMin.x, searchMax.y + 3.0f), ImGuiCond_Appearing);
-        ImGui::SetNextWindowSize(
-            ImVec2(searchMax.x - searchMin.x, 210.0f), ImGuiCond_Appearing);
+        ImGui::SetNextWindowPos(ImVec2(searchMin.x, searchMax.y + 3.0f), ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2(searchMax.x - searchMin.x, 210.0f), ImGuiCond_Appearing);
         if (ImGui::BeginPopup("##item_autocomplete",
-                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                ImGuiWindowFlags_NoSavedSettings)) {
+                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings)) {
             for (const auto id : matches) {
-                const std::string shortName(
-                    id.starts_with("minecraft:") ? id.substr(10) : id);
+                const std::string shortName(id.starts_with("minecraft:") ? id.substr(10) : id);
                 std::string label = shortName;
                 std::replace(label.begin(), label.end(), '_', ' ');
                 ImGui::PushID(id.data());
                 if (ImGui::Selectable(label.c_str())) {
                     if (add_item_from_search(setting, id.data())) {
+                        feedback = "Item added.";
                         set_item_search(searchBuffer, sizeof(searchBuffer), "", completionCycle);
+                    } else {
+                        feedback = "This item is already selected.";
                     }
                     ImGui::CloseCurrentPopup();
                 }
@@ -1091,6 +1128,7 @@ namespace {
             }
             ImGui::EndPopup();
         }
+        if (!feedback.empty()) ImGui::TextDisabled("%s", feedback.c_str());
     }
 
 
@@ -1098,6 +1136,17 @@ namespace {
 }
 
 void ContainerTransfer::on_settings_render() {
+    ImGui::TextWrapped("Choose which containers are used for withdrawing and depositing. Then select the item types to move. Click a matching container in the world to run the transfer without opening its screen.");
+    ImGui::TextDisabled("Source and destination types cannot be selected at the same time.");
+    const auto sourceIds = parse_id_list(m_sourceBlocks ? m_sourceBlocks->value() : "");
+    const auto destinationIds = parse_id_list(m_destinationBlocks ? m_destinationBlocks->value() : "");
+    const auto itemIds = parse_id_list(m_itemIds ? m_itemIds->value() : "");
+    ImGui::TextDisabled("%zu source types  |  %zu destination types  |  %zu item types",
+        sourceIds.size(), destinationIds.size(), itemIds.size());
+    if (sourceIds.empty()) ImGui::TextColored(ImVec4(0.72f, 0.39f, 0.12f, 1.0f), "Select at least one source container.");
+    if (destinationIds.empty()) ImGui::TextColored(ImVec4(0.72f, 0.39f, 0.12f, 1.0f), "Select at least one destination container.");
+    if (itemIds.empty()) ImGui::TextColored(ImVec4(0.72f, 0.39f, 0.12f, 1.0f), "Select at least one item type.");
+    ImGui::Spacing();
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 5.0f));
     render_container_selector("SOURCE", "source", m_sourceBlocks, m_destinationBlocks);
     ImGui::Spacing();
