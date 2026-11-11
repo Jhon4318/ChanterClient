@@ -833,7 +833,7 @@ namespace {
                 ImGui::PushID(option.id.data());
                 const float rowHeight = ImGui::GetFrameHeight();
                 const bool clicked = ImGui::Selectable("##container_option", checked,
-                    ImGuiSelectableFlags_SpanAvailWidth, ImVec2(0.0f, rowHeight));
+                    0, ImVec2(0.0f, rowHeight));
                 const ImVec2 rowMin = ImGui::GetItemRectMin();
                 const ImVec2 rowMax = ImGui::GetItemRectMax();
                 if (clicked) {
@@ -867,7 +867,7 @@ namespace {
                 ImGui::PushID(id.c_str());
                 const float rowHeight = ImGui::GetFrameHeight();
                 const bool clicked = ImGui::Selectable("##custom_container_option", true,
-                    ImGuiSelectableFlags_SpanAvailWidth, ImVec2(0.0f, rowHeight));
+                    0, ImVec2(0.0f, rowHeight));
                 const ImVec2 rowMin = ImGui::GetItemRectMin();
                 const ImVec2 rowMax = ImGui::GetItemRectMax();
                 if (clicked) toggle_id(id, false);
