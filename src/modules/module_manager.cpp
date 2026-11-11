@@ -5,6 +5,7 @@
 #include "events/event_bus.h"
 #include "minecraft/sdk/client/client_instance.h"
 #include "utils/logger.h"
+#include "ui/notifications.h"
 
 ModuleManager& ModuleManager::instance() {
     static ModuleManager manager;
@@ -39,12 +40,18 @@ void ModuleManager::initialize() {
         for (const auto& module : m_modules) {
             if (!module || module->name() == "SkinStealer" || module->keybind() != event.key) continue;
 
+            const bool wasEnabled = module->enabled();
             if (module->hold_to_enable()) {
                 if (event.action == KeyAction::Press)   module->set_enabled(true);
                 if (event.action == KeyAction::Release) module->set_enabled(false);
             }
             else if (event.action == KeyAction::Press) {
                 module->toggle();
+            }
+            if (wasEnabled != module->enabled()) {
+                ui::notifications::push(module->name(),
+                    module->enabled() ? "Feature enabled by hotkey." : "Feature disabled by hotkey.",
+                    module->enabled() ? ui::notifications::Level::Success : ui::notifications::Level::Info);
             }
         }
     });

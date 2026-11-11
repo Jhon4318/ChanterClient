@@ -3,6 +3,7 @@
 #include "modules/module_manager.h"
 #include "ui/clickgui.h"
 #include "ui/ui_settings.h"
+#include "ui/notifications.h"
 #include "utils/logger.h"
 #include "input/input_manager.h"
 
@@ -577,6 +578,7 @@ namespace {
         if (g_menuOpen.load()) {
             clickgui::render();
         }
+        ui::notifications::render();
 
         ImGui::Render();
         ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_commandList);
@@ -618,6 +620,7 @@ namespace {
         if (g_menuOpen.load()) {
             clickgui::render();
         }
+        ui::notifications::render();
 
         ImGui::Render();
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
