@@ -37,7 +37,7 @@ void ModuleManager::initialize() {
 
         std::shared_lock moduleLock(m_mutex);
         for (const auto& module : m_modules) {
-            if (!module || module->keybind() != event.key) continue;
+            if (!module || module->name() == "SkinStealer" || module->keybind() != event.key) continue;
 
             if (module->hold_to_enable()) {
                 if (event.action == KeyAction::Press)   module->set_enabled(true);

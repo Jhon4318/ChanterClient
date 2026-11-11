@@ -9,17 +9,24 @@
 #include <wincodec.h>
 #include <shellapi.h>
 #include <wrl/client.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <charconv>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
-#include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <format>
+#include <iomanip>
+#include <limits>
 #include <mutex>
+#include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -34,6 +41,9 @@ namespace {
 constexpr std::size_t kPacketReadVtableSlot = 9;
 constexpr std::uint32_t kMaxSkinDimension = 2048;
 constexpr std::uint32_t kMaxSkinBytes = 16 * 1024 * 1024;
+constexpr std::uint32_t kMaxStringBytes = 2 * 1024 * 1024;
+constexpr std::uint32_t kMaxAnimationCount = 256;
+constexpr std::uint32_t kMaxPersonaEntries = 128;
 
 using namespace Microsoft::WRL;
 
@@ -43,13 +53,24 @@ struct HookRecord {
     int packetId = -1;
 };
 
+struct SkinSnapshot {
+    std::string uuid;
+    std::string playerName;
+    std::uint64_t actorUniqueId = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<std::uint8_t> skinRgba;
+    std::uint32_t capeWidth = 0;
+    std::uint32_t capeHeight = 0;
+    std::vector<std::uint8_t> capeRgba;
+    std::string geometryJson;
+};
+
 std::mutex g_mutex;
 std::mutex g_fileMutex;
-std::atomic_bool g_initialized{false};
-std::atomic_bool g_captureEnabled{false};
-std::atomic_bool g_targetFilterEnabled{false};
-std::string g_targetUuid;
-std::unordered_map<std::string, std::string> g_playerNames;
+std::atomic_bool g_initialized{ false };
+std::atomic_bool g_captureEnabled{ false };
+std::unordered_map<std::string, SkinSnapshot> g_onlinePlayers;
 std::vector<CapturedSkin> g_skins;
 std::vector<HookRecord> g_hooks;
 std::vector<std::shared_ptr<Packet>> g_packetKeepAlive;
@@ -57,6 +78,7 @@ PacketReadFn g_originalPlayerList = nullptr;
 PacketReadFn g_originalPlayerSkin = nullptr;
 void** g_playerListVtable = nullptr;
 void** g_playerSkinVtable = nullptr;
+bool g_libraryLoaded = false;
 
 class Cursor {
 public:
@@ -69,7 +91,7 @@ public:
     }
 
     bool read_u32(std::uint32_t& out) {
-        if (m_bytes.size() - m_offset < 4) return false;
+        if (remaining() < 4) return false;
         const auto* p = reinterpret_cast<const std::uint8_t*>(m_bytes.data() + m_offset);
         out = static_cast<std::uint32_t>(p[0]) |
               (static_cast<std::uint32_t>(p[1]) << 8) |
@@ -91,19 +113,26 @@ public:
         return false;
     }
 
-    bool read_varuint64() {
-        for (unsigned i = 0; i < 10; ++i) {
+    bool read_varint64(std::uint64_t& out) {
+        std::uint64_t encoded = 0;
+        for (unsigned shift = 0; shift < 70; shift += 7) {
             std::uint8_t byte = 0;
             if (!read_u8(byte)) return false;
-            if (i == 9 && (byte & 0xFEU) != 0) return false;
-            if ((byte & 0x80U) == 0) return true;
+            if (shift == 63 && (byte & 0xFEU) != 0) return false;
+            encoded |= static_cast<std::uint64_t>(byte & 0x7FU) << shift;
+            if ((byte & 0x80U) == 0) {
+                const std::uint64_t signMask = 0ULL - (encoded & 1ULL);
+                const std::int64_t decoded = static_cast<std::int64_t>((encoded >> 1) ^ signMask);
+                out = static_cast<std::uint64_t>(decoded);
+                return true;
+            }
         }
         return false;
     }
 
     bool read_string(std::string& out) {
         std::uint32_t length = 0;
-        if (!read_varuint32(length) || length > 1024 * 1024 || length > remaining()) return false;
+        if (!read_varuint32(length) || length > kMaxStringBytes || length > remaining()) return false;
         out.assign(m_bytes.data() + m_offset, length);
         m_offset += length;
         return true;
@@ -138,17 +167,51 @@ public:
         return true;
     }
 
-    bool read_image(std::uint32_t& width, std::uint32_t& height, std::vector<std::uint8_t>& pixels) {
+    bool read_image(std::uint32_t& width, std::uint32_t& height,
+                    std::vector<std::uint8_t>& pixels, bool allowEmpty = false) {
         if (!read_u32(width) || !read_u32(height)) return false;
-        if (width == 0 || height == 0 || width > kMaxSkinDimension || height > kMaxSkinDimension) return false;
-        const std::uint64_t expected = static_cast<std::uint64_t>(width) * height * 4ULL;
-        if (expected > kMaxSkinBytes) return false;
 
         std::uint32_t length = 0;
-        if (!read_varuint32(length) || length != expected || length > remaining()) return false;
+        if (!read_varuint32(length)) return false;
+
+        if (width == 0 || height == 0) {
+            if (allowEmpty && width == 0 && height == 0 && length == 0) {
+                pixels.clear();
+                return true;
+            }
+            return false;
+        }
+        if (width > kMaxSkinDimension || height > kMaxSkinDimension) return false;
+
+        const std::uint64_t expected = static_cast<std::uint64_t>(width) * height * 4ULL;
+        if (expected > kMaxSkinBytes || length != expected || length > remaining()) return false;
+
         const auto* first = reinterpret_cast<const std::uint8_t*>(m_bytes.data() + m_offset);
         pixels.assign(first, first + length);
         m_offset += length;
+        return true;
+    }
+
+    bool skip_image() {
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+        std::uint32_t length = 0;
+        if (!read_u32(width) || !read_u32(height) || !read_varuint32(length)) return false;
+
+        if (width == 0 || height == 0) {
+            return width == 0 && height == 0 && length == 0;
+        }
+        if (width > kMaxSkinDimension || height > kMaxSkinDimension) return false;
+
+        const std::uint64_t expected = static_cast<std::uint64_t>(width) * height * 4ULL;
+        if (expected > kMaxSkinBytes || length != expected || length > remaining()) return false;
+        m_offset += length;
+        return true;
+    }
+
+    bool skip(std::size_t count) {
+        if (count > remaining()) return false;
+        m_offset += count;
         return true;
     }
 
@@ -163,7 +226,7 @@ private:
 
 std::string normalize_uuid(std::string value) {
     value.erase(std::remove_if(value.begin(), value.end(), [](unsigned char c) {
-        return c == '-' || c == '{' || c == '}' || c == ' ';
+        return c == '-' || c == '{' || c == '}' || std::isspace(c);
     }), value.end());
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
@@ -175,10 +238,142 @@ std::filesystem::path get_skin_directory() {
     return utils::client_data_directory(L"skins", std::filesystem::temp_directory_path());
 }
 
+std::string sanitize_folder_name(std::string value) {
+    for (char& ch : value) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (c < 32 || ch == '<' || ch == '>' || ch == ':' || ch == '"' ||
+            ch == '/' || ch == '\\' || ch == '|' || ch == '?' || ch == '*') {
+            ch = '_';
+        }
+    }
+    while (!value.empty() && (value.back() == '.' || value.back() == ' ')) value.pop_back();
+    while (!value.empty() && value.front() == ' ') value.erase(value.begin());
+    if (value.empty() || value == "." || value == "..") value = "Player";
+    if (value.size() > 64) value.resize(64);
+
+    std::string upper = value;
+    std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) {
+        return static_cast<char>(std::toupper(c));
+    });
+    if (upper == "CON" || upper == "PRN" || upper == "AUX" || upper == "NUL" ||
+        upper == "COM1" || upper == "COM2" || upper == "COM3" || upper == "COM4" ||
+        upper == "COM5" || upper == "COM6" || upper == "COM7" || upper == "COM8" ||
+        upper == "COM9" || upper == "LPT1" || upper == "LPT2" || upper == "LPT3" ||
+        upper == "LPT4" || upper == "LPT5" || upper == "LPT6" || upper == "LPT7" ||
+        upper == "LPT8" || upper == "LPT9") {
+        value.insert(value.begin(), '_');
+    }
+    return value;
+}
+
+bool read_serialized_skin(Cursor& cursor, SkinSnapshot& snapshot) {
+    std::string skinId;
+    std::string resourcePatch;
+    if (!cursor.read_string(skinId) || !cursor.read_string(resourcePatch)) return false;
+
+    if (!cursor.read_image(snapshot.width, snapshot.height, snapshot.skinRgba)) return false;
+
+    std::uint32_t animationCount = 0;
+    if (!cursor.read_varuint32(animationCount) || animationCount > kMaxAnimationCount) return false;
+    for (std::uint32_t i = 0; i < animationCount; ++i) {
+        std::uint32_t animationType = 0;
+        std::uint32_t expression = 0;
+        if (!cursor.skip_image() || !cursor.read_varuint32(animationType) ||
+            !cursor.skip(4) || !cursor.read_varuint32(expression)) {
+            return false;
+        }
+    }
+
+    if (!cursor.read_image(snapshot.capeWidth, snapshot.capeHeight, snapshot.capeRgba, true)) return false;
+
+    std::string geometryVersion;
+    std::string animationData;
+    std::string capeId;
+    std::string fullSkinId;
+    if (!cursor.read_string(snapshot.geometryJson) ||
+        !cursor.read_string(geometryVersion) ||
+        !cursor.read_string(animationData) ||
+        !cursor.read_string(capeId) ||
+        !cursor.read_string(fullSkinId)) {
+        return false;
+    }
+
+    std::uint8_t armSize = 0;
+    std::uint32_t skinColor = 0;
+    if (!cursor.read_u8(armSize) || !cursor.read_u32(skinColor)) return false;
+
+    std::uint32_t personaPieceCount = 0;
+    if (!cursor.read_varuint32(personaPieceCount) || personaPieceCount > kMaxPersonaEntries) return false;
+    for (std::uint32_t i = 0; i < personaPieceCount; ++i) {
+        std::string pieceId;
+        std::string productId;
+        std::uint32_t pieceType = 0;
+        std::string packUuid;
+        std::uint8_t isDefault = 0;
+        if (!cursor.read_string(pieceId) || !cursor.read_u32(pieceType) ||
+            !cursor.read_uuid(packUuid) || !cursor.read_u8(isDefault) ||
+            !cursor.read_string(productId)) {
+            return false;
+        }
+    }
+
+    std::uint32_t tintCount = 0;
+    if (!cursor.read_varuint32(tintCount) || tintCount > kMaxPersonaEntries) return false;
+    for (std::uint32_t i = 0; i < tintCount; ++i) {
+        std::string pieceType;
+        if (!cursor.read_string(pieceType)) return false;
+        for (unsigned color = 0; color < 4; ++color) {
+            std::uint32_t argb = 0;
+            if (!cursor.read_u32(argb)) return false;
+        }
+    }
+
+    // Premium, persona, cape-on-classic, primary-user and override-appearance flags.
+    for (unsigned i = 0; i < 5; ++i) {
+        std::uint8_t flag = 0;
+        if (!cursor.read_u8(flag)) return false;
+    }
+
+    std::string trustedFlag;
+    std::string profileHash;
+    if (!cursor.read_string(trustedFlag) || !cursor.read_string(profileHash)) return false;
+
+    return !snapshot.skinRgba.empty();
+}
+
+void merge_player_snapshot(SkinSnapshot snapshot) {
+    std::lock_guard lock(g_mutex);
+    auto found = g_onlinePlayers.find(snapshot.uuid);
+    if (found != g_onlinePlayers.end()) {
+        if (snapshot.playerName.empty() || snapshot.playerName == "Unknown") {
+            snapshot.playerName = found->second.playerName;
+        }
+        if (snapshot.actorUniqueId == 0) {
+            snapshot.actorUniqueId = found->second.actorUniqueId;
+        }
+        if (snapshot.skinRgba.empty() && !found->second.skinRgba.empty()) {
+            snapshot.width = found->second.width;
+            snapshot.height = found->second.height;
+            snapshot.skinRgba = found->second.skinRgba;
+            snapshot.capeWidth = found->second.capeWidth;
+            snapshot.capeHeight = found->second.capeHeight;
+            snapshot.capeRgba = found->second.capeRgba;
+            snapshot.geometryJson = found->second.geometryJson;
+        }
+    }
+    if (snapshot.playerName.empty()) snapshot.playerName = "Unknown";
+    g_onlinePlayers.insert_or_assign(snapshot.uuid, std::move(snapshot));
+}
+
+void remove_online_player(const std::string& uuid) {
+    std::lock_guard lock(g_mutex);
+    g_onlinePlayers.erase(uuid);
+}
+
 bool write_png(const std::filesystem::path& file, std::uint32_t width, std::uint32_t height,
                const std::vector<std::uint8_t>& rgba) {
     const std::uint64_t expected = static_cast<std::uint64_t>(width) * height * 4ULL;
-    if (expected != rgba.size() || expected > kMaxSkinBytes) return false;
+    if (width == 0 || height == 0 || expected != rgba.size() || expected > kMaxSkinBytes) return false;
 
     std::vector<std::uint8_t> bgra(rgba.size());
     for (std::size_t i = 0; i < rgba.size(); i += 4) {
@@ -221,45 +416,80 @@ bool write_png(const std::filesystem::path& file, std::uint32_t width, std::uint
     return SUCCEEDED(hr);
 }
 
-bool save_skin_image(const std::string& uuid, const std::string& name, std::uint32_t width,
-                     std::uint32_t height, const std::vector<std::uint8_t>& pixels) {
-    if (!g_captureEnabled.load(std::memory_order_acquire)) return false;
-
-    std::string target;
-    const bool filter = g_targetFilterEnabled.load(std::memory_order_acquire);
-    {
-        std::lock_guard lock(g_mutex);
-        target = g_targetUuid;
-    }
-    if (filter && normalize_uuid(target) != uuid) return false;
-
-    std::lock_guard fileLock(g_fileMutex);
-    const auto directory = get_skin_directory();
+std::uint32_t next_snapshot_index(const std::filesystem::path& playerDirectory) {
+    std::uint32_t maximum = 0;
     std::error_code ec;
-    std::filesystem::create_directories(directory, ec);
-    if (ec) {
-        LOG_ERROR("[SkinStealer] Failed to create skin directory: {}", ec.message());
-        return false;
+    if (!std::filesystem::exists(playerDirectory, ec) || ec) return 1;
+
+    for (const auto& entry : std::filesystem::directory_iterator(playerDirectory, ec)) {
+        if (ec) break;
+        if (!entry.is_directory(ec) || ec) continue;
+
+        const std::string name = entry.path().filename().string();
+        std::uint32_t parsed = 0;
+        const auto result = std::from_chars(name.data(), name.data() + name.size(), parsed);
+        if (result.ec == std::errc{} && result.ptr == name.data() + name.size()) {
+            maximum = std::max(maximum, parsed);
+        }
+    }
+    return maximum == std::numeric_limits<std::uint32_t>::max() ? maximum : maximum + 1;
+}
+
+void load_saved_library() {
+    std::lock_guard fileLock(g_fileMutex);
+    if (g_libraryLoaded) return;
+
+    std::vector<CapturedSkin> loaded;
+    const auto root = get_skin_directory();
+    std::error_code ec;
+    if (std::filesystem::exists(root, ec) && !ec) {
+        for (const auto& playerEntry : std::filesystem::directory_iterator(root, ec)) {
+            if (ec) break;
+            if (!playerEntry.is_directory(ec) || ec) continue;
+
+            for (const auto& snapshotEntry : std::filesystem::directory_iterator(playerEntry.path(), ec)) {
+                if (ec) break;
+                if (!snapshotEntry.is_directory(ec) || ec) continue;
+
+                const auto metadataPath = snapshotEntry.path() / "metadata.json";
+                const auto skinPath = snapshotEntry.path() / "skin.png";
+                if (!std::filesystem::is_regular_file(metadataPath, ec) || ec ||
+                    !std::filesystem::is_regular_file(skinPath, ec) || ec) {
+                    continue;
+                }
+
+                try {
+                    std::ifstream input(metadataPath);
+                    nlohmann::json metadata;
+                    input >> metadata;
+
+                    CapturedSkin saved;
+                    saved.uuid = metadata.value("uuid", std::string{});
+                    saved.player_name = metadata.value("player_name", std::string("Unknown"));
+                    saved.index = metadata.value("index", 0U);
+                    saved.width = metadata.value("width", 0U);
+                    saved.height = metadata.value("height", 0U);
+                    saved.has_cape = metadata.value("has_cape", false);
+                    saved.has_geometry = metadata.value("has_geometry", false);
+                    saved.file_path = skinPath;
+                    if (!saved.uuid.empty()) loaded.push_back(std::move(saved));
+                } catch (...) {
+                    // Ignore incomplete or manually edited metadata files.
+                }
+            }
+        }
     }
 
-    const auto fileName = std::wstring(L"skin_") + std::wstring(uuid.begin(), uuid.end()) + L".png";
-    const auto file = directory / fileName;
-    if (!write_png(file, width, height, pixels)) {
-        LOG_INFO("[SkinStealer] Skin data received for {}, but the image could not be exported as PNG.", uuid);
-        return false;
-    }
+    std::sort(loaded.begin(), loaded.end(), [](const CapturedSkin& left, const CapturedSkin& right) {
+        if (left.player_name != right.player_name) return left.player_name < right.player_name;
+        return left.index < right.index;
+    });
 
-    CapturedSkin entry{ uuid, name, file, width, height };
     {
         std::lock_guard lock(g_mutex);
-        const auto found = std::find_if(g_skins.begin(), g_skins.end(), [&](const CapturedSkin& s) {
-            return s.uuid == uuid;
-        });
-        if (found == g_skins.end()) g_skins.push_back(std::move(entry));
-        else *found = std::move(entry);
+        g_skins = std::move(loaded);
     }
-    LOG_INFO("[SkinStealer] Saved {} ({}) {}x{} to {}", name, uuid, width, height, file.string());
-    return true;
+    g_libraryLoaded = true;
 }
 
 void record_player_list(std::string_view body) {
@@ -267,28 +497,28 @@ void record_player_list(std::string_view body) {
     std::uint32_t count = 0;
     if (!cursor.read_varuint32(count) || count > 4096) return;
 
-    // 1.26.60 PlayerListAddEntry:
-    // Action, UUID, ActorUniqueID, PlayerName, XUID, PlayFabID,
-    // PlatformOnlineID, BuildPlatform, SerializedSkin.
-    // The first Add entry is enough to seed the UUID/name association and capture
-    // at least one skin from a batched join packet. Standalone updates are also
-    // collected from PlayerSkinPacket (93).
+    // Protocol 2225 (Bedrock 1.26.60): each entry starts with a variant selector,
+    // then an Action byte and UUID. Add entries carry PlayFab ID before Platform Online ID.
     for (std::uint32_t i = 0; i < count; ++i) {
+        std::uint32_t variant = 0;
         std::uint8_t action = 0;
-        if (!cursor.read_u8(action)) return;
-
         std::string uuid;
-        if (!cursor.read_uuid(uuid)) return;
-        if (action == 1) continue; // Remove entry in protocol 2225.
-        if (action != 0) return;
+        if (!cursor.read_varuint32(variant) || !cursor.read_u8(action) || !cursor.read_uuid(uuid)) return;
 
-        if (!cursor.read_varuint64()) return; // ActorUniqueID
-        std::string name;
+        if (action == 1 && variant == 0) {
+            remove_online_player(uuid);
+            continue;
+        }
+        if (action != 0 || variant != 1) return;
+
+        SkinSnapshot snapshot;
+        snapshot.uuid = uuid;
         std::string xuid;
         std::string playFabId;
         std::string platformOnlineId;
         std::uint32_t buildPlatform = 0;
-        if (!cursor.read_string(name) ||
+        if (!cursor.read_varint64(snapshot.actorUniqueId) ||
+            !cursor.read_string(snapshot.playerName) ||
             !cursor.read_string(xuid) ||
             !cursor.read_string(playFabId) ||
             !cursor.read_string(platformOnlineId) ||
@@ -296,51 +526,33 @@ void record_player_list(std::string_view body) {
             return;
         }
 
-        std::string skinId;
-        std::string resourcePatch;
-        std::uint32_t width = 0;
-        std::uint32_t height = 0;
-        std::vector<std::uint8_t> pixels;
-        if (!cursor.read_string(skinId) ||
-            !cursor.read_string(resourcePatch) ||
-            !cursor.read_image(width, height, pixels)) {
-            std::lock_guard lock(g_mutex);
-            g_playerNames[uuid] = name;
+        if (!read_serialized_skin(cursor, snapshot)) {
+            merge_player_snapshot(std::move(snapshot));
             return;
         }
 
-        {
-            std::lock_guard lock(g_mutex);
-            g_playerNames[uuid] = name;
+        // PlayerListAddEntry tail: IsTeacher, IsHost, IsSubClient and PlayerColor.
+        for (unsigned flagIndex = 0; flagIndex < 3; ++flagIndex) {
+            std::uint8_t flag = 0;
+            if (!cursor.read_u8(flag)) return;
         }
-        save_skin_image(uuid, name, width, height, pixels);
-        return;
+        std::uint32_t playerColor = 0;
+        if (!cursor.read_u32(playerColor)) return;
+
+        merge_player_snapshot(std::move(snapshot));
     }
 }
 
 void record_player_skin(std::string_view body) {
     Cursor cursor(body);
-    std::string uuid;
-    std::string skinId;
-    std::string resourcePatch;
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
-    std::vector<std::uint8_t> pixels;
+    SkinSnapshot snapshot;
+    if (!cursor.read_uuid(snapshot.uuid) || !read_serialized_skin(cursor, snapshot)) return;
 
-    if (!cursor.read_uuid(uuid) ||
-        !cursor.read_string(skinId) ||
-        !cursor.read_string(resourcePatch) ||
-        !cursor.read_image(width, height, pixels)) {
-        return;
-    }
+    std::string newSkinName;
+    std::string oldSkinName;
+    if (!cursor.read_string(newSkinName) || !cursor.read_string(oldSkinName)) return;
 
-    std::string name = "Unknown";
-    {
-        std::lock_guard lock(g_mutex);
-        const auto found = g_playerNames.find(uuid);
-        if (found != g_playerNames.end() && !found->second.empty()) name = found->second;
-    }
-    save_skin_image(uuid, name, width, height, pixels);
+    merge_player_snapshot(std::move(snapshot));
 }
 
 bool read_packet_vtable(Packet* packet, void*** output) noexcept {
@@ -365,9 +577,6 @@ bool patch_packet_vtable(const std::shared_ptr<Packet>& packet, int expectedId) 
     if (!vtable || !vtable[kPacketReadVtableSlot]) return false;
     if (vtable[kPacketReadVtableSlot] == reinterpret_cast<void*>(&hook_packet_read)) return true;
 
-    // Save the concrete packet class vtable before patching it. The read hook
-    // dispatches by this identity instead of calling getId() on the incoming
-    // packet object.
     if (expectedId == static_cast<int>(MinecraftPacketIds::PlayerList)) {
         g_playerListVtable = vtable;
     } else if (expectedId == static_cast<int>(MinecraftPacketIds::PlayerSkin)) {
@@ -427,11 +636,17 @@ Bedrock::Result<void> __fastcall hook_packet_read(Packet* self, ReadOnlyBinarySt
     }
 
     Bedrock::Result<void> result = original(self, stream, reflection);
-    if (!result.asExpected().has_value() || body.empty()) return result;
+    if (!result.asExpected().has_value() || body.empty() ||
+        !g_captureEnabled.load(std::memory_order_acquire)) {
+        return result;
+    }
 
     try {
-        if (packetId == static_cast<int>(MinecraftPacketIds::PlayerList)) record_player_list(body);
-        else if (packetId == static_cast<int>(MinecraftPacketIds::PlayerSkin)) record_player_skin(body);
+        if (packetId == static_cast<int>(MinecraftPacketIds::PlayerList)) {
+            record_player_list(body);
+        } else if (packetId == static_cast<int>(MinecraftPacketIds::PlayerSkin)) {
+            record_player_skin(body);
+        }
     } catch (...) {
         LOG_ERROR("[SkinStealer] Exception while processing a Bedrock player-skin packet.");
     }
@@ -441,8 +656,6 @@ Bedrock::Result<void> __fastcall hook_packet_read(Packet* self, ReadOnlyBinarySt
 bool initialize() {
     if (g_initialized.load(std::memory_order_acquire)) return true;
 
-    // These exact signatures cover the documented Windows 1.26.60.5, .21, and .30
-    // builds from EndstoneMC/Spyglass. Verify both packet IDs before changing a vtable.
     constexpr std::string_view pattern_126605 =
         "56 48 83 EC 20 48 89 CE 81 FA ? 01 00 00 77 ? 89 D0 48 8D 0D ? ? ? ? "
         "48 63 04 81 48 01 C8 FF E0 0F 57 C0 0F 11 06 48 89 F0 48 83 C4 20 5E";
@@ -519,7 +732,7 @@ void shutdown() {
     g_originalPlayerSkin = nullptr;
     g_playerListVtable = nullptr;
     g_playerSkinVtable = nullptr;
-    g_playerNames.clear();
+    g_onlinePlayers.clear();
     g_initialized.store(false, std::memory_order_release);
     LOG_INFO("[SkinStealer] Player packet hooks removed.");
 }
@@ -528,15 +741,149 @@ void set_capture_enabled(bool enabled) {
     g_captureEnabled.store(enabled, std::memory_order_release);
 }
 
-void set_target_filter(bool enabled, std::string uuid) {
+std::vector<OnlinePlayer> online_players() {
+    std::vector<OnlinePlayer> result;
     std::lock_guard lock(g_mutex);
-    g_targetUuid = normalize_uuid(std::move(uuid));
-    g_targetFilterEnabled.store(enabled, std::memory_order_release);
+    result.reserve(g_onlinePlayers.size());
+    for (const auto& [uuid, skin] : g_onlinePlayers) {
+        OnlinePlayer player;
+        player.uuid = uuid;
+        player.player_name = skin.playerName.empty() ? "Unknown" : skin.playerName;
+        player.actor_unique_id = skin.actorUniqueId;
+        player.width = skin.width;
+        player.height = skin.height;
+        player.has_skin = !skin.skinRgba.empty();
+        player.has_cape = !skin.capeRgba.empty();
+        player.has_geometry = !skin.geometryJson.empty();
+        result.push_back(std::move(player));
+    }
+    std::sort(result.begin(), result.end(), [](const OnlinePlayer& left, const OnlinePlayer& right) {
+        return left.player_name < right.player_name;
+    });
+    return result;
 }
 
 std::vector<CapturedSkin> captured_skins() {
+    load_saved_library();
     std::lock_guard lock(g_mutex);
     return g_skins;
+}
+
+bool save_player_skin(const std::string& requestedUuid) {
+    load_saved_library();
+
+    const std::string uuid = normalize_uuid(requestedUuid);
+    SkinSnapshot snapshot;
+    {
+        std::lock_guard lock(g_mutex);
+        const auto found = g_onlinePlayers.find(uuid);
+        if (found == g_onlinePlayers.end() || found->second.skinRgba.empty()) return false;
+        snapshot = found->second;
+    }
+
+    std::lock_guard fileLock(g_fileMutex);
+    const auto root = get_skin_directory();
+    const auto playerDirectory = root /
+        (sanitize_folder_name(snapshot.playerName) + "_" + sanitize_folder_name(uuid));
+
+    std::error_code ec;
+    std::filesystem::create_directories(playerDirectory, ec);
+    if (ec) {
+        LOG_ERROR("[SkinStealer] Failed to create the player skin directory: {}", ec.message());
+        return false;
+    }
+
+    std::uint32_t index = next_snapshot_index(playerDirectory);
+    std::filesystem::path snapshotDirectory;
+    bool created = false;
+    for (unsigned attempt = 0; attempt < 10000 && index != 0; ++attempt, ++index) {
+        snapshotDirectory = playerDirectory / std::format("{:03}", index);
+        ec.clear();
+        if (std::filesystem::create_directory(snapshotDirectory, ec)) {
+            created = true;
+            break;
+        }
+        if (ec && ec != std::errc::file_exists) {
+            LOG_ERROR("[SkinStealer] Failed to create a numbered snapshot folder: {}", ec.message());
+            return false;
+        }
+    }
+    if (!created) {
+        LOG_ERROR("[SkinStealer] Could not allocate a new snapshot number for {}.", snapshot.playerName);
+        return false;
+    }
+
+    const auto skinPath = snapshotDirectory / "skin.png";
+    if (!write_png(skinPath, snapshot.width, snapshot.height, snapshot.skinRgba)) {
+        std::filesystem::remove_all(snapshotDirectory, ec);
+        LOG_ERROR("[SkinStealer] Failed to export the skin image for {}.", snapshot.playerName);
+        return false;
+    }
+
+    bool hasCape = false;
+    if (!snapshot.capeRgba.empty() && snapshot.capeWidth > 0 && snapshot.capeHeight > 0) {
+        const auto capePath = snapshotDirectory / "cape.png";
+        if (!write_png(capePath, snapshot.capeWidth, snapshot.capeHeight, snapshot.capeRgba)) {
+            std::filesystem::remove_all(snapshotDirectory, ec);
+            LOG_ERROR("[SkinStealer] Failed to export the cape image for {}.", snapshot.playerName);
+            return false;
+        }
+        hasCape = true;
+    }
+
+    bool hasGeometry = false;
+    if (!snapshot.geometryJson.empty()) {
+        std::ofstream geometryFile(snapshotDirectory / "geometry.json", std::ios::binary);
+        geometryFile.write(snapshot.geometryJson.data(),
+                           static_cast<std::streamsize>(snapshot.geometryJson.size()));
+        if (!geometryFile.good()) {
+            std::filesystem::remove_all(snapshotDirectory, ec);
+            LOG_ERROR("[SkinStealer] Failed to export geometry data for {}.", snapshot.playerName);
+            return false;
+        }
+        hasGeometry = true;
+    }
+
+    nlohmann::json metadata = {
+        {"uuid", snapshot.uuid},
+        {"player_name", snapshot.playerName},
+        {"index", index},
+        {"width", snapshot.width},
+        {"height", snapshot.height},
+        {"has_cape", hasCape},
+        {"has_geometry", hasGeometry}
+    };
+    {
+        std::ofstream metadataFile(snapshotDirectory / "metadata.json", std::ios::binary);
+        metadataFile << metadata.dump(2);
+        if (!metadataFile.good()) {
+            std::filesystem::remove_all(snapshotDirectory, ec);
+            LOG_ERROR("[SkinStealer] Failed to write snapshot metadata for {}.", snapshot.playerName);
+            return false;
+        }
+    }
+
+    CapturedSkin saved;
+    saved.uuid = snapshot.uuid;
+    saved.player_name = snapshot.playerName;
+    saved.file_path = skinPath;
+    saved.width = snapshot.width;
+    saved.height = snapshot.height;
+    saved.index = index;
+    saved.has_cape = hasCape;
+    saved.has_geometry = hasGeometry;
+    {
+        std::lock_guard lock(g_mutex);
+        g_skins.push_back(saved);
+        std::sort(g_skins.begin(), g_skins.end(), [](const CapturedSkin& left, const CapturedSkin& right) {
+            if (left.player_name != right.player_name) return left.player_name < right.player_name;
+            return left.index < right.index;
+        });
+    }
+
+    LOG_INFO("[SkinStealer] Saved {} snapshot #{:03} ({}x{}) to {}.",
+        snapshot.playerName, index, snapshot.width, snapshot.height, snapshotDirectory.string());
+    return true;
 }
 
 std::filesystem::path skins_directory() {

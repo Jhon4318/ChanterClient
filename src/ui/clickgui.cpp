@@ -315,18 +315,20 @@ namespace clickgui {
                 if (ImGui::Button(enabled ? "Disable" : "Enable", ImVec2(150.0f, 30.0f))) module->toggle();
                 ImGui::PopStyleColor(3);
 
-                ImGui::Spacing();
-                ImGui::Separator();
-                ImGui::TextColored(kMuted, "KEYBIND");
-                const bool binding = InputManager::instance().binding_module() == module;
-                const std::string keyLabel = binding ? "Press a key... (DEL to clear)" :
-                    (module->keybind() == 0 ? "Key: Not set" : std::string("Key: ") + input::get_key_name(module->keybind()));
-                if (ImGui::Button(keyLabel.c_str(), ImVec2(210.0f, 30.0f))) {
-                    InputManager::instance().begin_binding(module);
+                if (module->name() != "SkinStealer") {
+                    ImGui::Spacing();
+                    ImGui::Separator();
+                    ImGui::TextColored(kMuted, "KEYBIND");
+                    const bool binding = InputManager::instance().binding_module() == module;
+                    const std::string keyLabel = binding ? "Press a key... (DEL to clear)" :
+                        (module->keybind() == 0 ? "Key: Not set" : std::string("Key: ") + input::get_key_name(module->keybind()));
+                    if (ImGui::Button(keyLabel.c_str(), ImVec2(210.0f, 30.0f))) {
+                        InputManager::instance().begin_binding(module);
+                    }
+                    ImGui::SameLine();
+                    bool hold = module->hold_to_enable();
+                    if (ImGui::Checkbox("Hold", &hold)) module->set_hold_to_enable(hold);
                 }
-                ImGui::SameLine();
-                bool hold = module->hold_to_enable();
-                if (ImGui::Checkbox("Hold", &hold)) module->set_hold_to_enable(hold);
 
                 ImGui::Spacing();
                 ImGui::Separator();
