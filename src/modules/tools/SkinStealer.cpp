@@ -206,6 +206,7 @@ void SkinStealer::update_aimed_player(LocalPlayer* localPlayer, ClientInstance* 
 
 void SkinStealer::handle_key_event(KeyEvent& event) {
     if (event.action != KeyAction::Press) return;
+    if (m_waitingForSaveKey.load(std::memory_order_acquire)) return;
 
     if (InputManager::instance().is_binding() ||
         ClientInstance::isClientUiOpen() ||
@@ -253,13 +254,13 @@ void SkinStealer::on_settings_render() {
         constexpr int ignoredKeys[] = {
             VK_LBUTTON, VK_RBUTTON, VK_CANCEL, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2,
             VK_SHIFT, VK_LSHIFT, VK_RSHIFT, VK_CONTROL, VK_LCONTROL, VK_RCONTROL,
-            VK_MENU, VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN, VK_ESCAPE
+            VK_MENU, VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN, VK_ESCAPE, VK_INSERT
         };
         for (int key = 1; key < 256; ++key) {
             if (std::find(std::begin(ignoredKeys), std::end(ignoredKeys), key) != std::end(ignoredKeys)) {
                 continue;
             }
-            if ((GetAsyncKeyState(key) & 1) != 0) {
+            if ((GetAsyncKeyState(key) & 0x8001) != 0) {
                 m_saveKeyCode->set_value(key);
                 m_waitingForSaveKey.store(false, std::memory_order_release);
                 LOG_INFO("[SkinStealer] Target save key changed to {}.", input::get_key_name(key));
