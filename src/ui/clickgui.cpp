@@ -223,11 +223,17 @@ void render() {
 
         const bool inWorld=ClientInstance::get()!=nullptr && ClientInstance::getLocalPlayer()!=nullptr;
         const bool gameReady=ClientInstance::get()!=nullptr;
-        const char* status=inWorld?"●  World Active":(gameReady?"●  Game Ready":"●  Waiting for Game");
+        const char* status=inWorld?"World Active":(gameReady?"Game Ready":"Waiting for Game");
         const ImVec4 statusColor=inWorld?ImVec4(0.12f,0.52f,0.30f,1.0f):kWarm;
-        const float statusWidth=ImGui::CalcTextSize(status).x;
+        const float markerSpace=14.0f;
+        const float statusWidth=ImGui::CalcTextSize(status).x+markerSpace;
         const float right=ImGui::GetWindowWidth()-ImGui::GetStyle().WindowPadding.x;
-        ImGui::SetCursorPos(ImVec2(std::max(contentStart.x,right-statusWidth),centerLine));
+        const float statusX=std::max(contentStart.x,right-statusWidth);
+        const ImVec2 topbarPos=ImGui::GetWindowPos();
+        ImGui::GetWindowDrawList()->AddCircleFilled(
+            ImVec2(topbarPos.x+statusX+4.0f,topbarPos.y+centerLine+lineHeight*0.5f),
+            3.2f,ImGui::GetColorU32(statusColor));
+        ImGui::SetCursorPos(ImVec2(statusX+markerSpace,centerLine));
         ImGui::TextColored(statusColor,"%s",status);
         ImGui::EndChild(); ImGui::PopStyleVar(); ImGui::PopStyleColor();
 
@@ -270,27 +276,43 @@ void render() {
             ImGui::Spacing(); ImGui::SetNextItemWidth(-1.0f);
             ImGui::InputTextWithHint("##module_search","Search features...",g_ui.search,sizeof(g_ui.search));
             ImGui::Spacing();
-            std::size_t visibleCount=0;
+            std::vector<Module*> visibleModules;
+            visibleModules.reserve(modules.size());
             for(Module* module:modules) {
-                if(!module || (g_ui.search[0]!='\0' && !contains_case_insensitive(module->name(),g_ui.search))) continue;
-                ++visibleCount; ImGui::PushID(module);
-                const bool selected=g_ui.selected==module;
-                const bool wasEnabled=module->enabled();
-                if(ImGui::Selectable(module->name().c_str(),selected,ImGuiSelectableFlags_AllowDoubleClick,
-                        ImVec2(-56.0f,40.0f))) g_ui.selected=module;
-                if(ImGui::IsItemHovered() && !module->tooltip().empty()) ImGui::SetTooltip("%s",module->tooltip().c_str());
-                ImGui::SameLine(0.0f,4.0f);
-                if(wasEnabled) {
-                    ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.86f,0.95f,0.89f,1.0f));
-                    ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(0.10f,0.39f,0.23f,1.0f));
-                }
-                if(ImGui::SmallButton(wasEnabled?"ON":"OFF")) {
-                    g_ui.selected=module; notify_module_toggle(module,!wasEnabled);
-                }
-                if(wasEnabled) ImGui::PopStyleColor(2);
-                ImGui::PopID();
+                if(module && (g_ui.search[0]=='\\0' || contains_case_insensitive(module->name(),g_ui.search)))
+                    visibleModules.push_back(module);
             }
-            if(visibleCount==0) ImGui::TextDisabled("No features match this search.");
+
+            if(!visibleModules.empty() && ImGui::BeginTable("##module_rows",2,
+                    ImGuiTableFlags_SizingStretchProp|ImGuiTableFlags_NoSavedSettings|ImGuiTableFlags_NoBordersInBody)) {
+                ImGui::TableSetupColumn("Feature",ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("Toggle",ImGuiTableColumnFlags_WidthFixed,48.0f);
+                for(Module* module:visibleModules) {
+                    ImGui::PushID(module);
+                    const bool selected=g_ui.selected==module;
+                    const bool wasEnabled=module->enabled();
+                    ImGui::TableNextRow(ImGuiTableRowFlags_None,40.0f);
+                    ImGui::TableSetColumnIndex(0);
+                    if(ImGui::Selectable(module->name().c_str(),selected,ImGuiSelectableFlags_AllowDoubleClick,
+                            ImVec2(0.0f,36.0f))) g_ui.selected=module;
+                    if(ImGui::IsItemHovered() && !module->tooltip().empty())
+                        ImGui::SetTooltip("%s",module->tooltip().c_str());
+
+                    ImGui::TableSetColumnIndex(1);
+                    if(wasEnabled) {
+                        ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.86f,0.95f,0.89f,1.0f));
+                        ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(0.10f,0.39f,0.23f,1.0f));
+                    }
+                    if(ImGui::SmallButton(wasEnabled?"ON":"OFF")) {
+                        g_ui.selected=module; notify_module_toggle(module,!wasEnabled);
+                    }
+                    if(wasEnabled) ImGui::PopStyleColor(2);
+                    ImGui::PopID();
+                }
+                ImGui::EndTable();
+            } else if(visibleModules.empty()) {
+                ImGui::TextDisabled("No features match this search.");
+            }
         }
         ImGui::EndChild();
         ImGui::SameLine();
