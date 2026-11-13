@@ -279,7 +279,7 @@ void render() {
             std::vector<Module*> visibleModules;
             visibleModules.reserve(modules.size());
             for(Module* module:modules) {
-                if(module && (g_ui.search[0]=='\\0' || contains_case_insensitive(module->name(),g_ui.search)))
+                if(module && (g_ui.search[0]==0 || contains_case_insensitive(module->name(),g_ui.search)))
                     visibleModules.push_back(module);
             }
 
