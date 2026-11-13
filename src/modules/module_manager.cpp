@@ -30,6 +30,9 @@ void ModuleManager::initialize() {
     auto containerTransfer = std::make_unique<ContainerTransfer>();
     m_modules.push_back(std::move(containerTransfer));
 
+    auto autoFishing = std::make_unique<AutoFishing>();
+    m_modules.push_back(std::move(autoFishing));
+
     rebuild_categories();
 
     EventBus::instance().subscribe<KeyEvent>([this](KeyEvent& event) {

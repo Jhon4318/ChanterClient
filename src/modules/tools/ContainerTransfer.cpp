@@ -64,10 +64,10 @@ namespace {
 
 ContainerTransfer::ContainerTransfer()
     : Module("Tools", "ContainerTransfer",
-        "Click a configured container to transfer selected items without opening its UI.") {
+        "Move selected items between containers.") {
     m_sourceBlocks = add_setting<config::StringSetting>(
         "Source containers",
-        "Container IDs, comma-separated.",
+        "Container IDs.",
         "");
     m_destinationBlocks = add_setting<config::StringSetting>(
         "Destination containers",
@@ -75,7 +75,7 @@ ContainerTransfer::ContainerTransfer()
         "");
     m_itemIds = add_setting<config::StringSetting>(
         "Item filter",
-        "Item IDs, comma-separated.",
+        "Item IDs.",
         "");
 
     s_instance.store(this, std::memory_order_release);
@@ -1136,16 +1136,16 @@ namespace {
 }
 
 void ContainerTransfer::on_settings_render() {
-    ImGui::TextWrapped("Choose which containers are used for withdrawing and depositing. Then select the item types to move. Click a matching container in the world to run the transfer without opening its screen.");
-    ImGui::TextDisabled("Source and destination types cannot be selected at the same time.");
+    ImGui::TextWrapped("Set source, destination, and item filters. Click a matching container to transfer.");
+    ImGui::TextDisabled("A container cannot be both source and destination.");
     const auto sourceIds = parse_id_list(m_sourceBlocks ? m_sourceBlocks->value() : "");
     const auto destinationIds = parse_id_list(m_destinationBlocks ? m_destinationBlocks->value() : "");
     const auto itemIds = parse_id_list(m_itemIds ? m_itemIds->value() : "");
     ImGui::TextDisabled("%zu source types  |  %zu destination types  |  %zu item types",
         sourceIds.size(), destinationIds.size(), itemIds.size());
-    if (sourceIds.empty()) ImGui::TextColored(ImVec4(0.72f, 0.39f, 0.12f, 1.0f), "Select at least one source container.");
-    if (destinationIds.empty()) ImGui::TextColored(ImVec4(0.72f, 0.39f, 0.12f, 1.0f), "Select at least one destination container.");
-    if (itemIds.empty()) ImGui::TextColored(ImVec4(0.72f, 0.39f, 0.12f, 1.0f), "Select at least one item type.");
+    if (sourceIds.empty()) ImGui::TextColored(ImVec4(0.72f, 0.39f, 0.12f, 1.0f), "Select a source container.");
+    if (destinationIds.empty()) ImGui::TextColored(ImVec4(0.72f, 0.39f, 0.12f, 1.0f), "Select a destination container.");
+    if (itemIds.empty()) ImGui::TextColored(ImVec4(0.72f, 0.39f, 0.12f, 1.0f), "Select an item type.");
     ImGui::Spacing();
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 5.0f));
     render_container_selector("SOURCE", "source", m_sourceBlocks, m_destinationBlocks);

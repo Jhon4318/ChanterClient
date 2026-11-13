@@ -109,7 +109,6 @@ void draw_profiles() {
     auto& manager=ConfigManager::instance();
     ImGui::TextColored(kAccent,"PROFILES");
     ImGui::TextDisabled("Active profile: %s",manager.active_config().c_str());
-    ImGui::TextWrapped("Changes made to ContainerTransfer are saved to this active profile.");
     ImGui::Spacing();
 
     const float saveButtonWidth=92.0f;
@@ -267,14 +266,14 @@ void render() {
         if(g_ui.category=="Configs") {
             ImGui::TextColored(kAccent,"Profiles");
             ImGui::TextColored(kMuted,"Saved settings");
-            ImGui::TextWrapped("Select a profile to load it, or create a named copy.");
+            ImGui::TextWrapped("Load, save, or delete profiles.");
         } else {
             const auto modules=modules_for_category(g_ui.category);
             const std::string categoryName=display_category(g_ui.category);
             ImGui::TextColored(kAccent,"FEATURES");
             ImGui::TextColored(kMuted,"%zu features / %s",modules.size(),categoryName.c_str());
             ImGui::Spacing(); ImGui::SetNextItemWidth(-1.0f);
-            ImGui::InputTextWithHint("##module_search","Search features...",g_ui.search,sizeof(g_ui.search));
+            ImGui::InputTextWithHint("##module_search","Search...",g_ui.search,sizeof(g_ui.search));
             ImGui::Spacing();
             std::vector<Module*> visibleModules;
             visibleModules.reserve(modules.size());
@@ -347,23 +346,23 @@ void render() {
                 const std::string keyLabel=binding?"Press a key... (DEL to clear)":
                     (module->keybind()==0?"Key: Not set":std::string("Key: ")+input::get_key_name(module->keybind()));
                 if(ImGui::Button(keyLabel.c_str(),ImVec2(210.0f,30.0f))) InputManager::instance().begin_binding(module);
-                if(ImGui::IsItemHovered()) ImGui::SetTooltip("Press a key to bind. Delete clears the binding; Escape cancels.");
+                if(ImGui::IsItemHovered()) ImGui::SetTooltip("Press a key; Delete clears; Escape cancels.");
                 ImGui::SameLine(); bool hold=module->hold_to_enable();
                 if(ImGui::Checkbox("Hold",&hold)) module->set_hold_to_enable(hold);
-                if(ImGui::IsItemHovered()) ImGui::SetTooltip("Hold the assigned key to keep this feature enabled.");
+                if(ImGui::IsItemHovered()) ImGui::SetTooltip("Hold the key to enable this feature.");
             }
             ImGui::Spacing(); ImGui::Separator(); ImGui::TextColored(kMuted,"SETTINGS");
             if(module->has_settings()) module->on_settings_render();
             else ImGui::TextColored(kMuted,"No additional settings.");
         } else {
             ImGui::TextColored(kAccent,"SELECT A FEATURE"); ImGui::Spacing();
-            ImGui::TextWrapped("Select a feature to view its description, controls and settings. Use the ON/OFF button in the list for quick toggling.");
+            ImGui::TextWrapped("Select a feature.");
             ImGui::Spacing(); ImGui::TextColored(kMuted,"CHANTERCLIENT / Minecraft Bedrock");
         }
         ImGui::EndChild();
 
         ImGui::Spacing();
-        ImGui::TextColored(kMuted,"INSERT: Toggle  |  END: Unload  |  DEL: Clear key  |  ESC: Cancel / Close");
+        ImGui::TextColored(kMuted,"END: Unload");
     }
     ImGui::End();
     if(!open) dx12_hook::set_menu_open(false);

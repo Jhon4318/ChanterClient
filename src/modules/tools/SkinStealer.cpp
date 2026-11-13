@@ -75,18 +75,18 @@ bool ray_intersects_aabb(
 
 SkinStealer::SkinStealer()
     : Module("Tools", "SkinStealer",
-        "Save a skin by aiming at a player with the target-save key, or by selecting their gamertag from the current world roster.") {
+        "Save skins from players in the current world.") {
 
     m_saveWithMiddleMouse = add_setting<config::BoolSetting>(
         "Also allow middle-click save",
-        "Optional shortcut: save the player under the crosshair with the middle mouse button.",
+        "Allow middle-click saves.",
         true
     );
 
     // Stored in profiles, but rendered as a key-capture button below rather than a numeric slider.
     m_saveKeyCode = add_setting<config::IntSetting>(
         "Save key code",
-        "Virtual-key code used to save the player under the crosshair.",
+        "Key used to save the aimed player.",
         'K', 1, 255,
         [] { return false; }
     );
@@ -301,9 +301,7 @@ void SkinStealer::on_settings_render() {
         }
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("Aim directly at a player and press this key to save a snapshot.");
-    ImGui::TextDisabled("Enable/Disable above controls the module; this key only saves.");
-    ImGui::TextDisabled("Middle mouse can also save the aimed player when enabled in the setting above.");
+    ImGui::TextDisabled("Aim at a player and press the save key.");
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -314,7 +312,7 @@ void SkinStealer::on_settings_render() {
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::InputTextWithHint(
         "##skin_gamertag_search",
-        "Search a gamertag in the current world...",
+        "Search gamertags...",
         gamertagSearch,
         sizeof(gamertagSearch));
 
@@ -335,7 +333,7 @@ void SkinStealer::on_settings_render() {
     }
 
     ImGui::TextDisabled(
-        "%zu matching gamertags / %zu players received from this world.",
+        "%zu / %zu players",
         visiblePlayers, players.size());
 
     ImGui::BeginChild(
@@ -346,7 +344,7 @@ void SkinStealer::on_settings_render() {
 
     if (players.empty()) {
         ImGui::TextWrapped(
-            "No gamertags have been received yet. Enable SkinStealer before joining the world.");
+            "No players found.");
     } else if (visiblePlayers == 0) {
         ImGui::TextDisabled("No gamertags match this search.");
     } else {
