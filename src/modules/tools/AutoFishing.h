@@ -11,7 +11,7 @@
 
 class Actor;
 class LocalPlayer;
-struct ActorTickEvent;
+struct ActorEntityTickEvent;
 
 class AutoFishing final : public Module {
 public:
@@ -33,11 +33,11 @@ private:
         InputUnavailable
     };
 
-    void on_actor_tick(ActorTickEvent& event);
+    void on_actor_entity_tick(ActorEntityTickEvent& event);
     bool game_is_focused() const;
     bool send_rod_use() const;
     std::vector<Actor*> fishing_hooks(LocalPlayer* player) const;
-    Actor* find_hook(const std::vector<Actor*>& hooks, std::uint64_t uniqueId) const;
+    static std::uint64_t actor_identity(const Actor* actor);
     void prepare_cast(const std::vector<Actor*>& hooks, std::uint64_t now);
 
     config::IntSetting* m_recastDelayMs = nullptr;
@@ -48,6 +48,7 @@ private:
     State m_state = State::Disabled;
     std::uint64_t m_tickListener = 0;
     std::uint64_t m_stateSince = 0;
+    std::uint64_t m_lastBobberTickAt = 0;
     std::uint64_t m_bobberId = 0;
     math::Vec3 m_lastBobberPosition{};
     std::unordered_set<std::uint64_t> m_previousHookIds;

@@ -2,6 +2,8 @@
 #include "minecraft/sdk/client/client_instance.h"
 #include "events/event_bus.h"
 #include "events/actor_tick_event.h"
+#include "events/actor_entity_tick_event.h"
+#include "minecraft/sdk/actor/actor.h"
 #include "minecraft/sdk/actor/local_player.h"
 #include "utils/logger.h"
 
@@ -27,10 +29,26 @@ namespace {
         void* expectedPlayer = g_currentLocalPlayer.load(std::memory_order_acquire);
         void* clientInst = g_currentClientInstance.load(std::memory_order_acquire);
 
-        if (self != nullptr && expectedPlayer != nullptr && self == expectedPlayer && clientInst != nullptr) {
-            ClientInstance::setLocalPlayer(static_cast<LocalPlayer*>(self));
-            ActorTickEvent event(static_cast<ClientInstance*>(clientInst), static_cast<LocalPlayer*>(self));
-            EventBus::instance().publish(event);
+        if (self != nullptr && expectedPlayer != nullptr && clientInst != nullptr) {
+            auto* localPlayer = static_cast<LocalPlayer*>(expectedPlayer);
+            if (self == expectedPlayer) {
+                ClientInstance::setLocalPlayer(localPlayer);
+            }
+
+            // Publish every actor tick so modules can observe short-lived entities
+            // such as fishing hooks, which may not appear in ActorOwnerComponent views.
+            ActorEntityTickEvent actorEvent(
+                static_cast<ClientInstance*>(clientInst),
+                localPlayer,
+                static_cast<Actor*>(self));
+            EventBus::instance().publish(actorEvent);
+
+            // Keep the original player-only event for existing modules.
+            if (self == expectedPlayer) {
+                ActorTickEvent playerEvent(
+                    static_cast<ClientInstance*>(clientInst), localPlayer);
+                EventBus::instance().publish(playerEvent);
+            }
         }
     }
 }
