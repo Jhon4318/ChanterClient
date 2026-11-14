@@ -53,6 +53,28 @@ std::vector<std::shared_ptr<Packet>> g_packetKeepAlive;
 std::unordered_map<void**, HookInfo> g_hookByVtable;
 std::unordered_map<std::uint64_t, std::uint64_t> g_uniqueToRuntime;
 std::unordered_map<std::uint64_t, math::Vec3> g_runtimePositions;
+std::array<std::atomic_bool, 5> g_packetFirstSeen{};
+std::atomic_uint32_t g_addActorParseSamples{0};
+
+std::size_t packet_trace_index(int packetId) {
+    switch (packetId) {
+    case kAddActorPacket: return 0;
+    case kRemoveActorPacket: return 1;
+    case kMoveActorAbsolutePacket: return 2;
+    case kMoveActorDeltaPacket: return 3;
+    case kSetActorMotionPacket: return 4;
+    default: return g_packetFirstSeen.size();
+    }
+}
+
+void trace_packet_read(int packetId, std::size_t bodySize) {
+    const auto index = packet_trace_index(packetId);
+    if (index >= g_packetFirstSeen.size()) return;
+    if (!g_packetFirstSeen[index].exchange(true, std::memory_order_relaxed)) {
+        LOG_INFO("[AutoFishing][Trace] Packet::read reached for packet ID {} (body={} bytes).",
+            packetId, bodySize);
+    }
+}
 
 bool read_vtable(Packet* packet, void*** output) noexcept {
     if (!packet || !output) return false;
@@ -152,9 +174,18 @@ void process_packet(int packetId, std::string_view body) {
             !cursor.read_string(actorType) ||
             !cursor.read_vec3(position) ||
             !cursor.read_vec3(velocity)) {
+            const auto sample = g_addActorParseSamples.fetch_add(1, std::memory_order_relaxed);
+            if (sample < 5) {
+                LOG_WARN("[AutoFishing][Trace] Could not parse AddActor body ({} bytes).", body.size());
+            }
             return;
         }
 
+        const auto sample = g_addActorParseSamples.fetch_add(1, std::memory_order_relaxed);
+        if (sample < 5 || actorType == "minecraft:fishing_hook") {
+            LOG_INFO("[AutoFishing][Trace] AddActor parsed: type='{}', runtimeId={}, pos=({:.2f}, {:.2f}, {:.2f}).",
+                actorType, runtimeId, position.x, position.y, position.z);
+        }
         if (actorType != "minecraft:fishing_hook" || runtimeId == 0) return;
 
         const auto uniqueId = static_cast<std::uint64_t>(uniqueIdSigned);
@@ -316,6 +347,8 @@ Bedrock::Result<void> __fastcall hook_packet_read(
     const auto original = reinterpret_cast<PacketReadFn>(info.original);
     Bedrock::Result<void> result = original(self, stream, reflection);
     if (!result.asExpected().has_value() || body.empty()) return result;
+
+    trace_packet_read(info.packetId, body.size());
 
     try {
         process_packet(info.packetId, body);
