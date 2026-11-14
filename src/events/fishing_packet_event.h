@@ -10,7 +10,8 @@ struct FishingPacketEvent : public Event {
         Spawn,
         Move,
         Motion,
-        Remove
+        Remove,
+        Bite
     };
 
     Kind kind = Kind::Spawn;
