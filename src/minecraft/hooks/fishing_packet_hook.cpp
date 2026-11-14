@@ -31,6 +31,7 @@ constexpr std::size_t kPacketReadVtableSlot = 9;
 constexpr int kAddActorPacket = 13;
 constexpr int kRemoveActorPacket = 14;
 constexpr int kMoveActorAbsolutePacket = 18;
+constexpr int kMoveActorDeltaPacket = 111;
 constexpr int kSetActorMotionPacket = 40;
 
 using PacketReadFn = minecraft::skin::PacketReadFn;
@@ -51,6 +52,7 @@ std::vector<HookRecord> g_hooks;
 std::vector<std::shared_ptr<Packet>> g_packetKeepAlive;
 std::unordered_map<void**, HookInfo> g_hookByVtable;
 std::unordered_map<std::uint64_t, std::uint64_t> g_uniqueToRuntime;
+std::unordered_map<std::uint64_t, math::Vec3> g_runtimePositions;
 
 bool read_vtable(Packet* packet, void*** output) noexcept {
     if (!packet || !output) return false;
@@ -112,6 +114,13 @@ public:
         return read_float(value.x) && read_float(value.y) && read_float(value.z);
     }
 
+    bool read_optional_float(float& value, bool& present) {
+        std::uint8_t hasValue = 0;
+        if (!read_u8(hasValue)) return false;
+        present = hasValue != 0;
+        return !present || read_float(value);
+    }
+
 private:
     [[nodiscard]] std::size_t remaining() const {
         return m_offset <= m_data.size() ? m_data.size() - m_offset : 0;
@@ -152,6 +161,7 @@ void process_packet(int packetId, std::string_view body) {
         {
             std::lock_guard lock(g_mutex);
             g_uniqueToRuntime.insert_or_assign(uniqueId, runtimeId);
+            g_runtimePositions.insert_or_assign(runtimeId, position);
         }
 
         publish(FishingPacketEvent::Kind::Spawn, uniqueId, runtimeId, position, velocity);
@@ -170,6 +180,38 @@ void process_packet(int packetId, std::string_view body) {
             return;
         }
 
+        {
+            std::lock_guard lock(g_mutex);
+            g_runtimePositions.insert_or_assign(runtimeId, position);
+        }
+        publish(FishingPacketEvent::Kind::Move, 0, runtimeId, position, {});
+        return;
+    }
+
+    if (packetId == kMoveActorDeltaPacket) {
+        std::uint64_t runtimeId = 0;
+        if (!cursor.read_varuint64(runtimeId) || runtimeId == 0) return;
+
+        float x = 0.0f, y = 0.0f, z = 0.0f;
+        bool hasX = false, hasY = false, hasZ = false;
+        if (!cursor.read_optional_float(x, hasX) ||
+            !cursor.read_optional_float(y, hasY) ||
+            !cursor.read_optional_float(z, hasZ)) {
+            return;
+        }
+        if (!hasX && !hasY && !hasZ) return;
+
+        math::Vec3 position{};
+        {
+            std::lock_guard lock(g_mutex);
+            const auto found = g_runtimePositions.find(runtimeId);
+            if (found == g_runtimePositions.end()) return;
+            position = found->second;
+            if (hasX) position.x = x;
+            if (hasY) position.y = y;
+            if (hasZ) position.z = z;
+            found->second = position;
+        }
         publish(FishingPacketEvent::Kind::Move, 0, runtimeId, position, {});
         return;
     }
@@ -200,6 +242,7 @@ void process_packet(int packetId, std::string_view body) {
             if (found == g_uniqueToRuntime.end()) return;
             runtimeId = found->second;
             g_uniqueToRuntime.erase(found);
+            g_runtimePositions.erase(runtimeId);
         }
 
         publish(FishingPacketEvent::Kind::Remove, uniqueId, runtimeId);
@@ -297,10 +340,11 @@ bool initialize() {
     }
 
     const auto factory = reinterpret_cast<minecraft::skin::CreatePacketFn>(factoryAddress);
-    constexpr std::array<int, 4> packetIds{
+    constexpr std::array<int, 5> packetIds{
         kAddActorPacket,
         kRemoveActorPacket,
         kMoveActorAbsolutePacket,
+        kMoveActorDeltaPacket,
         kSetActorMotionPacket
     };
 
@@ -332,12 +376,13 @@ bool initialize() {
             g_hookByVtable.clear();
             g_packetKeepAlive.clear();
             g_uniqueToRuntime.clear();
+            g_runtimePositions.clear();
             return false;
         }
     }
 
     g_initialized.store(true, std::memory_order_release);
-    LOG_INFO("[AutoFishing] Bedrock fishing packet hooks installed (13, 14, 18, 40).");
+    LOG_INFO("[AutoFishing] Bedrock fishing packet hooks installed (13, 14, 18, 111, 40).");
     return true;
 }
 
@@ -358,6 +403,7 @@ void shutdown() {
     g_hookByVtable.clear();
     g_packetKeepAlive.clear();
     g_uniqueToRuntime.clear();
+    g_runtimePositions.clear();
     g_initialized.store(false, std::memory_order_release);
     LOG_INFO("[AutoFishing] Fishing packet hooks removed.");
 }
