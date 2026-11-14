@@ -62,6 +62,7 @@ void AutoFishing::on_enable() {
 }
 
 void AutoFishing::on_disable() {
+    release_rod_use();
     if (m_tickListener != 0) {
         EventBus::instance().unsubscribe(m_tickListener);
         m_tickListener = 0;
@@ -88,7 +89,7 @@ bool AutoFishing::game_is_focused() const {
     return processId == GetCurrentProcessId();
 }
 
-bool AutoFishing::send_rod_use() const {
+bool AutoFishing::send_rod_use() {
     HWND window = GetForegroundWindow();
     if (!window || !game_is_focused() ||
         ClientInstance::isClientUiOpen() ||
@@ -96,21 +97,41 @@ bool AutoFishing::send_rod_use() const {
         return false;
     }
 
-    INPUT input[2]{};
-    input[0].type = INPUT_MOUSE;
-    input[0].mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
-    input[1].type = INPUT_MOUSE;
-    input[1].mi.dwFlags = MOUSEEVENTF_RIGHTUP;
+    // Keep the button down until the next local-player tick. Bedrock's input
+    // loop samples the click state per frame; down+up in one SendInput batch
+    // can be consumed before the game processes a use-item frame.
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
 
-    const UINT sent = SendInput(2, input, sizeof(INPUT));
-    if (sent != 2) {
-        LOG_WARN("[AutoFishing] SendInput inserted {}/2 mouse events (error={}).",
+    const UINT sent = SendInput(1, &input, sizeof(INPUT));
+    if (sent != 1) {
+        LOG_WARN("[AutoFishing] SendInput did not insert right-button down (sent={}, error={}).",
             sent, GetLastError());
         return false;
     }
 
-    LOG_INFO("[AutoFishing] Right-click input queued through SendInput.");
+    m_rightClickReleasePending.store(true, std::memory_order_release);
+    LOG_INFO("[AutoFishing] Right-button down queued; release scheduled for next player tick.");
     return true;
+}
+
+void AutoFishing::release_rod_use() {
+    if (!m_rightClickReleasePending.exchange(false, std::memory_order_acq_rel)) {
+        return;
+    }
+
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = MOUSEEVENTF_RIGHTUP;
+    const UINT sent = SendInput(1, &input, sizeof(INPUT));
+    if (sent != 1) {
+        LOG_WARN("[AutoFishing] SendInput did not insert right-button up (sent={}, error={}).",
+            sent, GetLastError());
+        return;
+    }
+
+    LOG_INFO("[AutoFishing] Right-button up queued after one player tick.");
 }
 
 void AutoFishing::prepare_cast(std::uint64_t now) {
@@ -190,6 +211,13 @@ void AutoFishing::evaluate_bite(
 
 void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
     if (!enabled() || !event.localPlayer || !event.clientInstance || !event.tickingActor) return;
+
+    // Release a queued click on the next player tick even if focus/UI state
+    // changed after the press, so the right button can never remain held.
+    if (event.tickingActor == event.localPlayer) {
+        release_rod_use();
+    }
+
     if (ClientInstance::isClientUiOpen() || ClientInstance::isGameUiOpen() || !game_is_focused()) return;
 
     std::lock_guard lock(m_mutex);
