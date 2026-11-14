@@ -53,6 +53,7 @@ enum class MinecraftPacketIds : int {
     RemoveActor = 14,
     MoveActorAbsolute = 18,
     SetActorMotion = 40,
+    ActorEvent = 27,
     MoveActorDelta = 111,
     PlayerList = 63,
     PlayerSkin = 93
