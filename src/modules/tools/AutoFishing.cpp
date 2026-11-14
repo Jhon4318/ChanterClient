@@ -119,17 +119,18 @@ bool AutoFishing::send_rod_use() const {
     const LPARAM mousePosition = MAKELPARAM(
         static_cast<SHORT>(cursor.x), static_cast<SHORT>(cursor.y));
 
-    DWORD_PTR messageResult = 0;
-    if (!SendMessageTimeoutW(window, WM_RBUTTONDOWN, MK_RBUTTON, mousePosition,
-            SMTO_ABORTIFHUNG, 500, &messageResult)) {
+    // Queue input for the window message loop. Do not synchronously re-enter
+    // Minecraft's window procedure from inside Actor::normalTick.
+    if (!PostMessageW(window, WM_RBUTTONDOWN, MK_RBUTTON, mousePosition)) {
+        LOG_WARN("[AutoFishing] Failed to queue right-button down (error={}).", GetLastError());
         return false;
     }
-    if (!SendMessageTimeoutW(window, WM_RBUTTONUP, 0, mousePosition,
-            SMTO_ABORTIFHUNG, 500, &messageResult)) {
+    if (!PostMessageW(window, WM_RBUTTONUP, 0, mousePosition)) {
+        LOG_WARN("[AutoFishing] Failed to queue right-button up (error={}).", GetLastError());
         return false;
     }
 
-    LOG_INFO("[AutoFishing] Right-click messages dispatched to Minecraft.");
+    LOG_INFO("[AutoFishing] Right-click messages queued for Minecraft.");
     return true;
 }
 
