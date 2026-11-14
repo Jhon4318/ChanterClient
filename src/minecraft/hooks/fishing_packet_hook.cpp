@@ -53,7 +53,8 @@ std::vector<std::shared_ptr<Packet>> g_packetKeepAlive;
 std::unordered_map<void**, HookInfo> g_hookByVtable;
 std::unordered_map<std::uint64_t, std::uint64_t> g_uniqueToRuntime;
 std::unordered_map<std::uint64_t, math::Vec3> g_runtimePositions;
-std::array<std::atomic_bool, 5> g_packetFirstSeen{};
+std::array<std::atomic_bool, 5> g_packetEntryLogged{};
+std::array<std::atomic_bool, 5> g_packetReturnLogged{};
 std::atomic_uint32_t g_addActorParseSamples{0};
 
 std::size_t packet_trace_index(int packetId) {
@@ -63,16 +64,17 @@ std::size_t packet_trace_index(int packetId) {
     case kMoveActorAbsolutePacket: return 2;
     case kMoveActorDeltaPacket: return 3;
     case kSetActorMotionPacket: return 4;
-    default: return g_packetFirstSeen.size();
+    default: return g_packetEntryLogged.size();
     }
 }
 
-void trace_packet_read(int packetId, std::size_t bodySize) {
+void trace_packet_phase(int packetId, std::size_t bodySize, bool returned) {
     const auto index = packet_trace_index(packetId);
-    if (index >= g_packetFirstSeen.size()) return;
-    if (!g_packetFirstSeen[index].exchange(true, std::memory_order_relaxed)) {
-        LOG_INFO("[AutoFishing][Trace] Packet::read reached for packet ID {} (body={} bytes).",
-            packetId, bodySize);
+    if (index >= g_packetEntryLogged.size()) return;
+    auto& flag = returned ? g_packetReturnLogged[index] : g_packetEntryLogged[index];
+    if (!flag.exchange(true, std::memory_order_relaxed)) {
+        LOG_INFO("[AutoFishing][Trace] Packet::read {} packet ID {} (body={} bytes).",
+            returned ? "returned from" : "entered for", packetId, bodySize);
     }
 }
 
@@ -333,6 +335,9 @@ Bedrock::Result<void> __fastcall hook_packet_read(
         info = found->second;
     }
 
+    // Emit before inspecting the stream or calling the original packet handler.
+    trace_packet_phase(info.packetId, 0, false);
+
     std::string body;
     try {
         const auto view = stream.getView();
@@ -348,7 +353,7 @@ Bedrock::Result<void> __fastcall hook_packet_read(
     Bedrock::Result<void> result = original(self, stream, reflection);
     if (!result.asExpected().has_value() || body.empty()) return result;
 
-    trace_packet_read(info.packetId, body.size());
+    trace_packet_phase(info.packetId, body.size(), true);
 
     try {
         process_packet(info.packetId, body);
