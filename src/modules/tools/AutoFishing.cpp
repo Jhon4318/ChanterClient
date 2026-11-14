@@ -21,7 +21,7 @@ constexpr std::uint64_t kBobberSpawnTimeoutMs = 5000;
 constexpr std::uint64_t kBobberReturnTimeoutMs = 2000;
 constexpr std::uint64_t kStaleBobberTimeoutMs = 30000;
 constexpr float kBobberSearchRangeSq = 48.0f * 48.0f;
-constexpr float kHorizontalMotionLimitSq = 0.30f * 0.30f;
+constexpr float kStationaryThreshold = 0.001f;
 }
 
 AutoFishing::AutoFishing()
@@ -187,7 +187,8 @@ void AutoFishing::evaluate_bite(
     const math::Vec3 delta = newPosition - m_lastBobberPosition;
     const bool movementBite = hasPosition &&
         delta.y <= -threshold &&
-        (delta.x * delta.x + delta.z * delta.z) <= kHorizontalMotionLimitSq;
+        std::abs(delta.x) < kStationaryThreshold &&
+        std::abs(delta.z) < kStationaryThreshold;
     const bool velocityBite = hasVelocity && newVelocity.y <= -threshold;
 
     if (hasPosition) m_lastBobberPosition = newPosition;
