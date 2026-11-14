@@ -23,6 +23,7 @@ constexpr float kBobberSearchRangeSq = 48.0f * 48.0f;
 constexpr float kStationaryThreshold = 0.001f;
 std::atomic_bool g_traceLocalTick{false};
 std::atomic_bool g_traceActorBobberTick{false};
+std::atomic_bool g_traceWorldBobberScan{false};
 std::atomic_bool g_traceBobberMove{false};
 std::atomic_bool g_traceBobberMotion{false};
 }
@@ -40,6 +41,7 @@ AutoFishing::AutoFishing()
 void AutoFishing::on_enable() {
     g_traceLocalTick.store(false, std::memory_order_relaxed);
     g_traceActorBobberTick.store(false, std::memory_order_relaxed);
+    g_traceWorldBobberScan.store(false, std::memory_order_relaxed);
     g_traceBobberMove.store(false, std::memory_order_relaxed);
     g_traceBobberMotion.store(false, std::memory_order_relaxed);
     LOG_INFO("[AutoFishing] Using Actor::normalTick fallback; experimental packet hooks are disabled.");
@@ -255,6 +257,36 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
     }
     m_localPlayerPosition = event.localPlayer->getPosition();
     m_havePlayerPosition = true;
+
+    // Some Bedrock projectile actors do not reliably reach Actor::normalTick.
+    // Poll the world's actor registry from the local-player tick as a fallback.
+    for (Actor* worldActor : Actor::get_all(event.localPlayer)) {
+        if (!worldActor || worldActor == event.localPlayer ||
+            worldActor->getActorType() != ActorType::FishingHook) {
+            continue;
+        }
+
+        const std::uint64_t runtimeId = worldActor->getRuntimeId();
+        if (runtimeId == 0) continue;
+
+        if (!g_traceWorldBobberScan.exchange(true, std::memory_order_relaxed)) {
+            LOG_INFO("[AutoFishing][Trace] FishingHook found by world actor scan.");
+        }
+
+        auto& data = m_bobbers[runtimeId];
+        const math::Vec3 position = worldActor->getPosition();
+        const math::Vec3 velocity = worldActor->getVelocity();
+        if (runtimeId == m_bobberRuntimeId) {
+            evaluate_bite(position, velocity, true, true, now);
+        }
+        data.position = position;
+        data.velocity = velocity;
+        data.lastUpdate = now;
+        if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber ||
+            m_state == State::WaitingForWorld) {
+            try_adopt_bobber(now);
+        }
+    }
 
     switch (m_state) {
     case State::Disabled:
