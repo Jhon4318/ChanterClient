@@ -6,17 +6,16 @@
 
 #include <cstdint>
 #include <mutex>
+#include <unordered_map>
 #include <unordered_set>
-#include <vector>
 
 class Actor;
-class LocalPlayer;
 struct ActorEntityTickEvent;
+struct FishingPacketEvent;
 
 class AutoFishing final : public Module {
 public:
     AutoFishing();
-
     void on_enable() override;
     void on_disable() override;
     void on_settings_render() override;
@@ -26,19 +25,29 @@ private:
         Disabled,
         WaitingForWorld,
         WaitingForBobber,
+        SearchingForBobber,
         Fishing,
         WaitingForBobberReturn,
         RecastDelay,
-        NoBobber,
         InputUnavailable
     };
 
+    struct BobberData {
+        math::Vec3 position{};
+        math::Vec3 velocity{};
+        std::uint64_t lastUpdate = 0;
+    };
+
     void on_actor_entity_tick(ActorEntityTickEvent& event);
+    void on_fishing_packet(FishingPacketEvent& event);
     bool game_is_focused() const;
     bool send_rod_use() const;
-    std::vector<Actor*> fishing_hooks(LocalPlayer* player) const;
-    static std::uint64_t actor_identity(const Actor* actor);
-    void prepare_cast(const std::vector<Actor*>& hooks, std::uint64_t now);
+    void prepare_cast(std::uint64_t now);
+    void try_adopt_bobber(std::uint64_t now);
+    void evaluate_bite(const math::Vec3& newPosition,
+                       const math::Vec3& newVelocity,
+                       bool hasPosition, bool hasVelocity,
+                       std::uint64_t now);
 
     config::IntSetting* m_recastDelayMs = nullptr;
     config::FloatSetting* m_biteThreshold = nullptr;
@@ -47,9 +56,15 @@ private:
     mutable std::mutex m_mutex;
     State m_state = State::Disabled;
     std::uint64_t m_tickListener = 0;
+    std::uint64_t m_packetListener = 0;
     std::uint64_t m_stateSince = 0;
-    std::uint64_t m_lastBobberTickAt = 0;
-    std::uint64_t m_bobberId = 0;
+    std::uint64_t m_bobberRuntimeId = 0;
+    bool m_pendingReel = false;
+    bool m_havePlayerPosition = false;
+    bool m_packetHooksReady = false;
+    math::Vec3 m_localPlayerPosition{};
     math::Vec3 m_lastBobberPosition{};
-    std::unordered_set<std::uint64_t> m_previousHookIds;
+    math::Vec3 m_lastBobberVelocity{};
+    std::unordered_map<std::uint64_t, BobberData> m_bobbers;
+    std::unordered_set<std::uint64_t> m_previousBobberIds;
 };
