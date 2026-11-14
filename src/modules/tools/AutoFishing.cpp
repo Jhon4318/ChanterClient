@@ -2,8 +2,6 @@
 
 #include "events/actor_entity_tick_event.h"
 #include "events/event_bus.h"
-#include "events/fishing_packet_event.h"
-#include "minecraft/hooks/fishing_packet_hook.h"
 #include "minecraft/sdk/actor/actor.h"
 #include "minecraft/sdk/actor/local_player.h"
 #include "minecraft/sdk/client/client_instance.h"
@@ -44,10 +42,7 @@ void AutoFishing::on_enable() {
     g_traceActorBobberTick.store(false, std::memory_order_relaxed);
     g_traceBobberMove.store(false, std::memory_order_relaxed);
     g_traceBobberMotion.store(false, std::memory_order_relaxed);
-    m_packetHooksReady = minecraft::fishing::initialize();
-    if (!m_packetHooksReady) {
-        LOG_WARN("[AutoFishing] Packet tracking unavailable; actor-tick fallback remains active.");
-    }
+    LOG_INFO("[AutoFishing] Using Actor::normalTick fallback; experimental packet hooks are disabled.");
 
     {
         std::lock_guard lock(m_mutex);
@@ -62,8 +57,6 @@ void AutoFishing::on_enable() {
 
     m_tickListener = EventBus::instance().subscribe<ActorEntityTickEvent>(
         [this](ActorEntityTickEvent& event) { on_actor_entity_tick(event); });
-    m_packetListener = EventBus::instance().subscribe<FishingPacketEvent>(
-        [this](FishingPacketEvent& event) { on_fishing_packet(event); });
 
     LOG_INFO("[AutoFishing] Enabled. Hold a fishing rod and aim at water.");
 }
@@ -73,11 +66,6 @@ void AutoFishing::on_disable() {
         EventBus::instance().unsubscribe(m_tickListener);
         m_tickListener = 0;
     }
-    if (m_packetListener != 0) {
-        EventBus::instance().unsubscribe(m_packetListener);
-        m_packetListener = 0;
-    }
-
     {
         std::lock_guard lock(m_mutex);
         m_state = State::Disabled;
@@ -89,10 +77,7 @@ void AutoFishing::on_disable() {
         m_bobbers.clear();
     }
 
-    if (m_packetHooksReady) {
-        minecraft::fishing::shutdown();
-        m_packetHooksReady = false;
-    }
+
 }
 
 bool AutoFishing::game_is_focused() const {
@@ -111,26 +96,20 @@ bool AutoFishing::send_rod_use() const {
         return false;
     }
 
-    POINT cursor{};
-    if (!GetCursorPos(&cursor) || !ScreenToClient(window, &cursor)) {
-        cursor.x = 0;
-        cursor.y = 0;
-    }
-    const LPARAM mousePosition = MAKELPARAM(
-        static_cast<SHORT>(cursor.x), static_cast<SHORT>(cursor.y));
+    INPUT input[2]{};
+    input[0].type = INPUT_MOUSE;
+    input[0].mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
+    input[1].type = INPUT_MOUSE;
+    input[1].mi.dwFlags = MOUSEEVENTF_RIGHTUP;
 
-    // Queue input for the window message loop. Do not synchronously re-enter
-    // Minecraft's window procedure from inside Actor::normalTick.
-    if (!PostMessageW(window, WM_RBUTTONDOWN, MK_RBUTTON, mousePosition)) {
-        LOG_WARN("[AutoFishing] Failed to queue right-button down (error={}).", GetLastError());
-        return false;
-    }
-    if (!PostMessageW(window, WM_RBUTTONUP, 0, mousePosition)) {
-        LOG_WARN("[AutoFishing] Failed to queue right-button up (error={}).", GetLastError());
+    const UINT sent = SendInput(2, input, sizeof(INPUT));
+    if (sent != 2) {
+        LOG_WARN("[AutoFishing] SendInput inserted {}/2 mouse events (error={}).",
+            sent, GetLastError());
         return false;
     }
 
-    LOG_INFO("[AutoFishing] Right-click messages queued for Minecraft.");
+    LOG_INFO("[AutoFishing] Right-click input queued through SendInput.");
     return true;
 }
 
@@ -207,67 +186,6 @@ void AutoFishing::evaluate_bite(
 
     m_pendingReel = true;
     LOG_INFO("[AutoFishing] Bobber bite movement detected; reel queued.");
-}
-
-void AutoFishing::on_fishing_packet(FishingPacketEvent& event) {
-    if (!enabled() || event.runtimeId == 0) return;
-    std::lock_guard lock(m_mutex);
-    if (!enabled()) return;
-
-    const std::uint64_t now = GetTickCount64();
-    switch (event.kind) {
-    case FishingPacketEvent::Kind::Spawn: {
-        LOG_INFO("[AutoFishing][Trace] FishingHook spawn event: runtimeId={}, pos=({:.3f}, {:.3f}, {:.3f}), velocity=({:.3f}, {:.3f}, {:.3f}).",
-            event.runtimeId, event.position.x, event.position.y, event.position.z,
-            event.velocity.x, event.velocity.y, event.velocity.z);
-        BobberData data{};
-        data.position = event.position;
-        data.velocity = event.velocity;
-        data.lastUpdate = now;
-        m_bobbers.insert_or_assign(event.runtimeId, data);
-        try_adopt_bobber(now);
-        break;
-    }
-    case FishingPacketEvent::Kind::Move: {
-        auto found = m_bobbers.find(event.runtimeId);
-        if (found == m_bobbers.end()) return;
-        found->second.lastUpdate = now;
-        if (event.runtimeId == m_bobberRuntimeId) {
-            if (!g_traceBobberMove.exchange(true, std::memory_order_relaxed)) {
-                LOG_INFO("[AutoFishing][Trace] First bobber position update: pos=({:.3f}, {:.3f}, {:.3f}).",
-                    event.position.x, event.position.y, event.position.z);
-            }
-            evaluate_bite(event.position, found->second.velocity, true, false, now);
-        }
-        found->second.position = event.position;
-        break;
-    }
-    case FishingPacketEvent::Kind::Motion: {
-        auto found = m_bobbers.find(event.runtimeId);
-        if (found == m_bobbers.end()) return;
-        found->second.velocity = event.velocity;
-        found->second.lastUpdate = now;
-        if (event.runtimeId == m_bobberRuntimeId) {
-            if (!g_traceBobberMotion.exchange(true, std::memory_order_relaxed)) {
-                LOG_INFO("[AutoFishing][Trace] First bobber velocity update: velocity=({:.3f}, {:.3f}, {:.3f}).",
-                    event.velocity.x, event.velocity.y, event.velocity.z);
-            }
-            evaluate_bite(found->second.position, event.velocity, false, true, now);
-        }
-        break;
-    }
-    case FishingPacketEvent::Kind::Remove:
-        m_bobbers.erase(event.runtimeId);
-        m_previousBobberIds.erase(event.runtimeId);
-        if (event.runtimeId == m_bobberRuntimeId) {
-            m_bobberRuntimeId = 0;
-            m_pendingReel = false;
-            m_state = State::RecastDelay;
-            m_stateSince = now;
-            LOG_INFO("[AutoFishing] Bobber removed; recast queued.");
-        }
-        break;
-    }
 }
 
 void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
