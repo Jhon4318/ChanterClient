@@ -24,7 +24,9 @@ Bedrock::Result<void> __fastcall hook_packet_read(
     const cereal::ReflectionCtx& reflection);
 
 namespace {
-constexpr std::size_t kPacketReadWithReflectionVtableSlot = 8;
+// On Bedrock's MSVC build the two Packet::read overloads occupy slots 9/8 respectively.
+// Slot 9 is read(ReadOnlyBinaryStream&, ReflectionCtx const&), the overload used by packet decoding.
+constexpr std::size_t kPacketReadWithReflectionVtableSlot = 9;
 constexpr int kActorEventPacket = static_cast<int>(MinecraftPacketIds::ActorEvent);
 constexpr std::uint8_t kFishHookHooktimeEvent = 13; // Bedrock 1.26.60 / protocol 2225
 using PacketReadFn = minecraft::skin::PacketReadFn;
