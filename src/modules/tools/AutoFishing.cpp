@@ -17,6 +17,7 @@
 namespace {
 constexpr std::uint64_t kBobberSpawnTimeoutMs = 5000;
 constexpr std::uint64_t kBobberMissingGraceMs = 300;
+constexpr std::uint64_t kBobberReturnTimeoutMs = 2000;
 constexpr float kBobberSearchRangeSq = 48.0f * 48.0f;
 constexpr float kHorizontalMotionLimitSq = 0.30f * 0.30f;
 }
@@ -156,12 +157,17 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
         case State::NoBobber:
         case State::InputUnavailable:
         case State::Fishing:
+            return;
+
         case State::WaitingForBobberReturn:
-            if (m_state == State::WaitingForBobberReturn &&
-                m_lastBobberTickAt != 0 &&
+            if (m_lastBobberTickAt != 0 &&
                 now - m_lastBobberTickAt >= kBobberMissingGraceMs) {
                 m_state = State::RecastDelay;
                 m_stateSince = now;
+            } else if (now - m_stateSince >= kBobberReturnTimeoutMs) {
+                m_state = State::Fishing;
+                m_stateSince = now;
+                LOG_WARN("[AutoFishing] Bobber did not retract; waiting for the next bite.");
             }
             return;
 
@@ -217,8 +223,10 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
 
     m_lastBobberTickAt = now;
 
-    if (m_state == State::WaitingForBobberReturn)
+    if (m_state == State::WaitingForBobberReturn) {
+        m_lastBobberPosition = actor->getPosition();
         return;
+    }
     if (m_state != State::Fishing)
         return;
 

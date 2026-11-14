@@ -4,6 +4,7 @@
 #include "events/actor_tick_event.h"
 #include "events/actor_entity_tick_event.h"
 #include "minecraft/sdk/actor/actor.h"
+#include "minecraft/sdk/components/ActorTypeComponent.h"
 #include "minecraft/sdk/actor/local_player.h"
 #include "utils/logger.h"
 
@@ -35,13 +36,16 @@ namespace {
                 ClientInstance::setLocalPlayer(localPlayer);
             }
 
-            // Publish every actor tick so modules can observe short-lived entities
-            // such as fishing hooks, which may not appear in ActorOwnerComponent views.
-            ActorEntityTickEvent actorEvent(
-                static_cast<ClientInstance*>(clientInst),
-                localPlayer,
-                static_cast<Actor*>(self));
-            EventBus::instance().publish(actorEvent);
+            auto* actor = static_cast<Actor*>(self);
+            // Only forward player and fishing-hook ticks; avoid dispatching every
+            // entity update through the event bus when the feature is enabled.
+            if (self == expectedPlayer || actor->getActorType() == ActorType::FishingHook) {
+                ActorEntityTickEvent actorEvent(
+                    static_cast<ClientInstance*>(clientInst),
+                    localPlayer,
+                    actor);
+                EventBus::instance().publish(actorEvent);
+            }
 
             // Keep the original player-only event for existing modules.
             if (self == expectedPlayer) {
