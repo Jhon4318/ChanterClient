@@ -5,6 +5,7 @@
 #include "utils/math.h"
 
 #include <cstdint>
+#include <atomic>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -39,7 +40,8 @@ private:
 
     void on_actor_entity_tick(ActorEntityTickEvent& event);
     bool game_is_focused() const;
-    bool send_rod_use() const;
+    bool send_rod_use();
+    void release_rod_use();
     void prepare_cast(std::uint64_t now);
     void try_adopt_bobber(std::uint64_t now);
     void evaluate_bite(const math::Vec3& newPosition,
@@ -58,6 +60,7 @@ private:
     std::uint64_t m_bobberRuntimeId = 0;
     bool m_pendingReel = false;
     bool m_havePlayerPosition = false;
+    std::atomic_bool m_rightClickReleasePending{false};
     math::Vec3 m_localPlayerPosition{};
     math::Vec3 m_lastBobberPosition{};
     math::Vec3 m_lastBobberVelocity{};
