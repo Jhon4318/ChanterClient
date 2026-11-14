@@ -20,7 +20,7 @@ constexpr std::uint64_t kBobberSpawnTimeoutMs = 5000;
 constexpr std::uint64_t kBobberReturnTimeoutMs = 2000;
 constexpr std::uint64_t kStaleBobberTimeoutMs = 30000;
 constexpr float kBobberSearchRangeSq = 48.0f * 48.0f;
-constexpr float kStationaryThreshold = 0.001f;
+constexpr float kStationaryThreshold = 0.25f; // allow small horizontal drift in network bobber updates
 std::atomic_bool g_traceLocalTick{false};
 std::atomic_bool g_traceActorBobberTick{false};
 std::atomic_bool g_traceWorldActorScan{false};
@@ -208,8 +208,8 @@ void AutoFishing::evaluate_bite(
     const math::Vec3 delta = newPosition - m_lastBobberPosition;
     const bool movementBite = hasPosition &&
         delta.y <= -threshold &&
-        std::abs(delta.x) < kStationaryThreshold &&
-        std::abs(delta.z) < kStationaryThreshold;
+        std::abs(delta.x) <= kStationaryThreshold &&
+        std::abs(delta.z) <= kStationaryThreshold;
     const bool velocityBite = hasVelocity && newVelocity.y <= -threshold;
 
     if (hasPosition) m_lastBobberPosition = newPosition;
@@ -217,7 +217,8 @@ void AutoFishing::evaluate_bite(
     if (!movementBite && !velocityBite) return;
 
     m_pendingReel = true;
-    LOG_INFO("[AutoFishing] Bobber bite movement detected; reel queued.");
+    LOG_INFO("[AutoFishing] Bobber bite movement detected (delta={:.3f}, {:.3f}, {:.3f}); reel queued.",
+        delta.x, delta.y, delta.z);
 }
 
 void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
