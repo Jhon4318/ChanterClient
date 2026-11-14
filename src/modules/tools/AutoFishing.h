@@ -64,6 +64,8 @@ private:
     math::Vec3 m_localPlayerPosition{};
     math::Vec3 m_lastBobberPosition{};
     math::Vec3 m_lastBobberVelocity{};
+    float m_bobberPeakY = 0.0f;
+    std::uint64_t m_lastBobberTraceAt = 0;
     std::unordered_map<std::uint64_t, BobberData> m_bobbers;
     std::unordered_set<std::uint64_t> m_previousBobberIds;
 };
