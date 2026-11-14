@@ -20,7 +20,8 @@ constexpr std::uint64_t kBobberSpawnTimeoutMs = 5000;
 constexpr std::uint64_t kBobberReturnTimeoutMs = 2000;
 constexpr std::uint64_t kStaleBobberTimeoutMs = 30000;
 constexpr float kBobberSearchRangeSq = 48.0f * 48.0f;
-constexpr float kStationaryThreshold = 0.25f; // allow small horizontal drift in network bobber updates
+constexpr std::uint64_t kBobberTraceIntervalMs = 1000;
+constexpr float kBiteVelocityThreshold = 0.12f;
 std::atomic_bool g_traceLocalTick{false};
 std::atomic_bool g_traceActorBobberTick{false};
 std::atomic_bool g_traceWorldActorScan{false};
@@ -53,6 +54,8 @@ void AutoFishing::on_enable() {
         m_state = State::WaitingForWorld;
         m_stateSince = GetTickCount64();
         m_bobberRuntimeId = 0;
+        m_bobberPeakY = 0.0f;
+        m_lastBobberTraceAt = 0;
         m_pendingReel = false;
         m_havePlayerPosition = false;
         m_previousBobberIds.clear();
@@ -73,6 +76,13 @@ void AutoFishing::on_disable() {
     }
     {
         std::lock_guard lock(m_mutex);
+        if (m_state == State::Fishing) {
+            const std::uint64_t stoppedAt = GetTickCount64();
+            const std::uint64_t elapsed = stoppedAt >= m_stateSince ? stoppedAt - m_stateSince : 0;
+            const float drop = m_bobberPeakY - m_lastBobberPosition.y;
+            LOG_INFO("[AutoFishing] Disabled while waiting for bite ({}s, bobber ID={}, cumulative drop={:.3f}).",
+                elapsed / 1000, m_bobberRuntimeId, drop);
+        }
         m_state = State::Disabled;
         m_stateSince = 0;
         m_bobberRuntimeId = 0;
@@ -165,6 +175,8 @@ void AutoFishing::prepare_cast(std::uint64_t now) {
     m_state = State::WaitingForBobber;
     m_stateSince = now;
     m_bobberRuntimeId = 0;
+    m_bobberPeakY = 0.0f;
+    m_lastBobberTraceAt = 0;
     m_pendingReel = false;
 }
 
@@ -189,6 +201,8 @@ void AutoFishing::try_adopt_bobber(std::uint64_t now) {
     m_bobberRuntimeId = bestId;
     m_lastBobberPosition = found->second.position;
     m_lastBobberVelocity = found->second.velocity;
+    m_bobberPeakY = found->second.position.y;
+    m_lastBobberTraceAt = now;
     m_state = State::Fishing;
     m_stateSince = now;
     LOG_INFO("[AutoFishing] Fishing bobber detected (runtime ID={}, distance={:.2f}).",
@@ -202,23 +216,48 @@ void AutoFishing::evaluate_bite(
 
     const auto warmup = static_cast<std::uint64_t>(
         m_detectionWarmupMs ? m_detectionWarmupMs->value() : 1000);
-    if (now - m_stateSince < warmup) return;
-
     const float threshold = m_biteThreshold ? m_biteThreshold->value() : 0.20f;
-    const math::Vec3 delta = newPosition - m_lastBobberPosition;
-    const bool movementBite = hasPosition &&
-        delta.y <= -threshold &&
-        std::abs(delta.x) <= kStationaryThreshold &&
-        std::abs(delta.z) <= kStationaryThreshold;
-    const bool velocityBite = hasVelocity && newVelocity.y <= -threshold;
 
+    // Bedrock can replicate a bite as several small downward position changes.
+    // Compare against the highest Y seen during this cast instead of requiring
+    // one individual tick to drop by the entire sensitivity threshold.
+    if (hasPosition && newPosition.y > m_bobberPeakY) {
+        m_bobberPeakY = newPosition.y;
+    }
+    const float cumulativeDrop = hasPosition
+        ? (m_bobberPeakY - newPosition.y)
+        : 0.0f;
+    const math::Vec3 delta = newPosition - m_lastBobberPosition;
+
+    if (now >= m_lastBobberTraceAt &&
+        now - m_lastBobberTraceAt >= kBobberTraceIntervalMs) {
+        LOG_INFO(
+            "[AutoFishing][Trace] Bobber id={} pos=({:.2f}, {:.2f}, {:.2f}) "
+            "vel=({:.3f}, {:.3f}, {:.3f}) peakY={:.2f} drop={:.3f} threshold={:.3f}.",
+            m_bobberRuntimeId,
+            newPosition.x, newPosition.y, newPosition.z,
+            newVelocity.x, newVelocity.y, newVelocity.z,
+            m_bobberPeakY, cumulativeDrop, threshold);
+        m_lastBobberTraceAt = now;
+    }
+
+    // Keep the high-water mark during warmup too, so the cast's initial arc
+    // is not mistaken for a bite once detection becomes active.
     if (hasPosition) m_lastBobberPosition = newPosition;
     if (hasVelocity) m_lastBobberVelocity = newVelocity;
+    if (now < m_stateSince || now - m_stateSince < warmup) return;
+
+    const bool movementBite = hasPosition && cumulativeDrop >= threshold;
+    const bool velocityBite = hasVelocity &&
+        newVelocity.y <= -kBiteVelocityThreshold &&
+        cumulativeDrop >= threshold * 0.5f;
+
     if (!movementBite && !velocityBite) return;
 
     m_pendingReel = true;
-    LOG_INFO("[AutoFishing] Bobber bite movement detected (delta={:.3f}, {:.3f}, {:.3f}); reel queued.",
-        delta.x, delta.y, delta.z);
+    LOG_INFO(
+        "[AutoFishing] Bobber bite detected (drop={:.3f}, velocityY={:.3f}, threshold={:.3f}); reel queued.",
+        cumulativeDrop, hasVelocity ? newVelocity.y : 0.0f, threshold);
 }
 
 void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
