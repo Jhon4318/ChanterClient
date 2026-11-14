@@ -15,6 +15,7 @@
 #include <imgui.h>
 
 #include <cmath>
+#include <atomic>
 
 namespace {
 constexpr std::uint64_t kBobberSpawnTimeoutMs = 5000;
@@ -22,6 +23,10 @@ constexpr std::uint64_t kBobberReturnTimeoutMs = 2000;
 constexpr std::uint64_t kStaleBobberTimeoutMs = 30000;
 constexpr float kBobberSearchRangeSq = 48.0f * 48.0f;
 constexpr float kStationaryThreshold = 0.001f;
+std::atomic_bool g_traceLocalTick{false};
+std::atomic_bool g_traceActorBobberTick{false};
+std::atomic_bool g_traceBobberMove{false};
+std::atomic_bool g_traceBobberMotion{false};
 }
 
 AutoFishing::AutoFishing()
@@ -35,6 +40,10 @@ AutoFishing::AutoFishing()
 }
 
 void AutoFishing::on_enable() {
+    g_traceLocalTick.store(false, std::memory_order_relaxed);
+    g_traceActorBobberTick.store(false, std::memory_order_relaxed);
+    g_traceBobberMove.store(false, std::memory_order_relaxed);
+    g_traceBobberMotion.store(false, std::memory_order_relaxed);
     m_packetHooksReady = minecraft::fishing::initialize();
     if (!m_packetHooksReady) {
         LOG_WARN("[AutoFishing] Packet tracking unavailable; actor-tick fallback remains active.");
@@ -207,6 +216,9 @@ void AutoFishing::on_fishing_packet(FishingPacketEvent& event) {
     const std::uint64_t now = GetTickCount64();
     switch (event.kind) {
     case FishingPacketEvent::Kind::Spawn: {
+        LOG_INFO("[AutoFishing][Trace] FishingHook spawn event: runtimeId={}, pos=({:.3f}, {:.3f}, {:.3f}), velocity=({:.3f}, {:.3f}, {:.3f}).",
+            event.runtimeId, event.position.x, event.position.y, event.position.z,
+            event.velocity.x, event.velocity.y, event.velocity.z);
         BobberData data{};
         data.position = event.position;
         data.velocity = event.velocity;
@@ -220,6 +232,10 @@ void AutoFishing::on_fishing_packet(FishingPacketEvent& event) {
         if (found == m_bobbers.end()) return;
         found->second.lastUpdate = now;
         if (event.runtimeId == m_bobberRuntimeId) {
+            if (!g_traceBobberMove.exchange(true, std::memory_order_relaxed)) {
+                LOG_INFO("[AutoFishing][Trace] First bobber position update: pos=({:.3f}, {:.3f}, {:.3f}).",
+                    event.position.x, event.position.y, event.position.z);
+            }
             evaluate_bite(event.position, found->second.velocity, true, false, now);
         }
         found->second.position = event.position;
@@ -231,6 +247,10 @@ void AutoFishing::on_fishing_packet(FishingPacketEvent& event) {
         found->second.velocity = event.velocity;
         found->second.lastUpdate = now;
         if (event.runtimeId == m_bobberRuntimeId) {
+            if (!g_traceBobberMotion.exchange(true, std::memory_order_relaxed)) {
+                LOG_INFO("[AutoFishing][Trace] First bobber velocity update: velocity=({:.3f}, {:.3f}, {:.3f}).",
+                    event.velocity.x, event.velocity.y, event.velocity.z);
+            }
             evaluate_bite(found->second.position, event.velocity, false, true, now);
         }
         break;
@@ -260,6 +280,9 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
     Actor* actor = event.tickingActor;
 
     if (actor != event.localPlayer && actor->getActorType() == ActorType::FishingHook) {
+        if (!g_traceActorBobberTick.exchange(true, std::memory_order_relaxed)) {
+            LOG_INFO("[AutoFishing][Trace] Actor::normalTick observed a FishingHook actor.");
+        }
         const std::uint64_t runtimeId = actor->getRuntimeId();
         if (runtimeId != 0) {
             auto& data = m_bobbers[runtimeId];
@@ -280,6 +303,9 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
     }
     if (actor != event.localPlayer) return;
 
+    if (!g_traceLocalTick.exchange(true, std::memory_order_relaxed)) {
+        LOG_INFO("[AutoFishing][Trace] LocalPlayer tick listener is running.");
+    }
     m_localPlayerPosition = event.localPlayer->getPosition();
     m_havePlayerPosition = true;
 
