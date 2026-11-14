@@ -23,6 +23,7 @@ constexpr float kBobberSearchRangeSq = 48.0f * 48.0f;
 constexpr float kStationaryThreshold = 0.001f;
 std::atomic_bool g_traceLocalTick{false};
 std::atomic_bool g_traceActorBobberTick{false};
+std::atomic_bool g_traceWorldActorScan{false};
 std::atomic_bool g_traceWorldBobberScan{false};
 std::atomic_bool g_traceBobberMove{false};
 std::atomic_bool g_traceBobberMotion{false};
@@ -41,6 +42,7 @@ AutoFishing::AutoFishing()
 void AutoFishing::on_enable() {
     g_traceLocalTick.store(false, std::memory_order_relaxed);
     g_traceActorBobberTick.store(false, std::memory_order_relaxed);
+    g_traceWorldActorScan.store(false, std::memory_order_relaxed);
     g_traceWorldBobberScan.store(false, std::memory_order_relaxed);
     g_traceBobberMove.store(false, std::memory_order_relaxed);
     g_traceBobberMotion.store(false, std::memory_order_relaxed);
@@ -99,6 +101,11 @@ bool AutoFishing::send_rod_use() {
         return false;
     }
 
+    if (m_rightClickReleasePending.load(std::memory_order_acquire)) {
+        LOG_WARN("[AutoFishing] Previous right-click is still awaiting release.");
+        return false;
+    }
+
     // Keep the button down until the next local-player tick. Bedrock's input
     // loop samples the click state per frame; down+up in one SendInput batch
     // can be consumed before the game processes a use-item frame.
@@ -119,7 +126,7 @@ bool AutoFishing::send_rod_use() {
 }
 
 void AutoFishing::release_rod_use() {
-    if (!m_rightClickReleasePending.exchange(false, std::memory_order_acq_rel)) {
+    if (!m_rightClickReleasePending.load(std::memory_order_acquire)) {
         return;
     }
 
@@ -128,11 +135,13 @@ void AutoFishing::release_rod_use() {
     input.mi.dwFlags = MOUSEEVENTF_RIGHTUP;
     const UINT sent = SendInput(1, &input, sizeof(INPUT));
     if (sent != 1) {
-        LOG_WARN("[AutoFishing] SendInput did not insert right-button up (sent={}, error={}).",
+        // Keep the pending flag set so the next player tick retries the release.
+        LOG_WARN("[AutoFishing] SendInput did not insert right-button up (sent={}, error={}); will retry.",
             sent, GetLastError());
         return;
     }
 
+    m_rightClickReleasePending.store(false, std::memory_order_release);
     LOG_INFO("[AutoFishing] Right-button up queued after one player tick.");
 }
 
@@ -260,7 +269,12 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
 
     // Some Bedrock projectile actors do not reliably reach Actor::normalTick.
     // Poll the world's actor registry from the local-player tick as a fallback.
-    for (Actor* worldActor : Actor::get_all(event.localPlayer)) {
+    const auto worldActors = Actor::get_all(event.localPlayer);
+    if (!g_traceWorldActorScan.exchange(true, std::memory_order_relaxed)) {
+        LOG_INFO("[AutoFishing][Trace] World actor scan is running ({} actor references).",
+            worldActors.size());
+    }
+    for (Actor* worldActor : worldActors) {
         if (!worldActor || worldActor == event.localPlayer ||
             worldActor->getActorType() != ActorType::FishingHook) {
             continue;
