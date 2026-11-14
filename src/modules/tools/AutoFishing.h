@@ -12,6 +12,7 @@
 
 class Actor;
 struct ActorEntityTickEvent;
+struct FishingPacketEvent;
 
 class AutoFishing final : public Module {
 public:
@@ -39,33 +40,28 @@ private:
     };
 
     void on_actor_entity_tick(ActorEntityTickEvent& event);
+    void on_fishing_packet(FishingPacketEvent& event);
     bool game_is_focused() const;
     bool send_rod_use();
     void release_rod_use();
     void prepare_cast(std::uint64_t now);
     void try_adopt_bobber(std::uint64_t now);
-    void evaluate_bite(const math::Vec3& newPosition,
-                       const math::Vec3& newVelocity,
-                       bool hasPosition, bool hasVelocity,
-                       std::uint64_t now);
 
     config::IntSetting* m_recastDelayMs = nullptr;
-    config::FloatSetting* m_biteThreshold = nullptr;
-    config::IntSetting* m_detectionWarmupMs = nullptr;
+    config::IntSetting* m_initialCastDelayMs = nullptr;
 
     mutable std::mutex m_mutex;
     State m_state = State::Disabled;
     std::uint64_t m_tickListener = 0;
+    std::uint64_t m_packetListener = 0;
     std::uint64_t m_stateSince = 0;
     std::uint64_t m_bobberRuntimeId = 0;
+    int m_castAttempts = 0;
     bool m_pendingReel = false;
     bool m_havePlayerPosition = false;
     std::atomic_bool m_rightClickReleasePending{false};
+    std::atomic_bool m_packetHooksReady{false};
     math::Vec3 m_localPlayerPosition{};
-    math::Vec3 m_lastBobberPosition{};
-    math::Vec3 m_lastBobberVelocity{};
-    float m_bobberPeakY = 0.0f;
-    std::uint64_t m_lastBobberTraceAt = 0;
     std::unordered_map<std::uint64_t, BobberData> m_bobbers;
     std::unordered_set<std::uint64_t> m_previousBobberIds;
 };
