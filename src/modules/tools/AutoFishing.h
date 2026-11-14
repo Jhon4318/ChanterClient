@@ -11,7 +11,6 @@
 
 class Actor;
 struct ActorEntityTickEvent;
-struct FishingPacketEvent;
 
 class AutoFishing final : public Module {
 public:
@@ -39,7 +38,6 @@ private:
     };
 
     void on_actor_entity_tick(ActorEntityTickEvent& event);
-    void on_fishing_packet(FishingPacketEvent& event);
     bool game_is_focused() const;
     bool send_rod_use() const;
     void prepare_cast(std::uint64_t now);
@@ -56,12 +54,10 @@ private:
     mutable std::mutex m_mutex;
     State m_state = State::Disabled;
     std::uint64_t m_tickListener = 0;
-    std::uint64_t m_packetListener = 0;
     std::uint64_t m_stateSince = 0;
     std::uint64_t m_bobberRuntimeId = 0;
     bool m_pendingReel = false;
     bool m_havePlayerPosition = false;
-    bool m_packetHooksReady = false;
     math::Vec3 m_localPlayerPosition{};
     math::Vec3 m_lastBobberPosition{};
     math::Vec3 m_lastBobberVelocity{};
