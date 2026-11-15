@@ -92,6 +92,10 @@ public:
     virtual void write(BinaryStream& stream) const = 0;
     virtual Bedrock::Result<void> read(ReadOnlyBinaryStream& stream, const cereal::ReflectionCtx& reflection) = 0;
     virtual Bedrock::Result<void> read(ReadOnlyBinaryStream& stream) = 0;
+
+    // Non-virtual member detour: preserve the exact MSVC x64 member-function ABI
+    // of Packet::read(ReadOnlyBinaryStream&, ReflectionCtx const&).
+    Bedrock::Result<void> readDetour(ReadOnlyBinaryStream& stream, const cereal::ReflectionCtx& reflection);
     [[nodiscard]] virtual bool disallowBatching() const = 0;
     [[nodiscard]] virtual bool isValid() const = 0;
     [[nodiscard]] virtual SerializationMode getSerializationMode() const = 0;

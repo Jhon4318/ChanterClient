@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -18,18 +19,41 @@
 #include <vector>
 
 namespace minecraft::fishing {
-
-Bedrock::Result<void> __fastcall hook_packet_read(
+Bedrock::Result<void> handle_packet_read(
     Packet* self, ReadOnlyBinaryStream& stream,
     const cereal::ReflectionCtx& reflection);
+}
 
+Bedrock::Result<void> Packet::readDetour(
+    ReadOnlyBinaryStream& stream, const cereal::ReflectionCtx& reflection) {
+    return minecraft::fishing::handle_packet_read(this, stream, reflection);
+}
+
+namespace minecraft::fishing {
 namespace {
 // On Bedrock's MSVC build the two Packet::read overloads occupy slots 9/8 respectively.
 // Slot 9 is read(ReadOnlyBinaryStream&, ReflectionCtx const&), the overload used by packet decoding.
 constexpr std::size_t kPacketReadWithReflectionVtableSlot = 9;
 constexpr int kActorEventPacket = static_cast<int>(MinecraftPacketIds::ActorEvent);
 constexpr std::uint8_t kFishHookHooktimeEvent = 13; // Bedrock 1.26.60 / protocol 2225
-using PacketReadFn = minecraft::skin::PacketReadFn;
+using PacketReadMemberFn = Bedrock::Result<void> (Packet::*)(ReadOnlyBinaryStream&, const cereal::ReflectionCtx&);
+using PacketReadDetourFn = Bedrock::Result<void> (Packet::*)(ReadOnlyBinaryStream&, const cereal::ReflectionCtx&);
+
+void* member_function_address(PacketReadDetourFn function) noexcept {
+    void* address = nullptr;
+    static_assert(sizeof(function) == sizeof(address),
+        "Packet member-function pointer layout changed for the MSVC x64 ABI");
+    std::memcpy(&address, &function, sizeof(address));
+    return address;
+}
+
+PacketReadMemberFn member_function_from_address(void* address) noexcept {
+    PacketReadMemberFn function{};
+    static_assert(sizeof(function) == sizeof(address),
+        "Packet member-function pointer layout changed for the MSVC x64 ABI");
+    std::memcpy(&function, &address, sizeof(address));
+    return function;
+}
 
 struct HookRecord {
     void** slot = nullptr;
@@ -132,7 +156,9 @@ bool patch_packet_vtable(const std::shared_ptr<Packet>& packet, int expectedId) 
         return false;
     }
 
-    *slot = reinterpret_cast<void*>(&hook_packet_read);
+    const auto detourAddress = member_function_address(&Packet::readDetour);
+    if (!detourAddress) return false;
+    *slot = detourAddress;
     DWORD ignored = 0;
     VirtualProtect(slot, sizeof(void*), oldProtect, &ignored);
 
@@ -144,44 +170,28 @@ bool patch_packet_vtable(const std::shared_ptr<Packet>& packet, int expectedId) 
 
 } // namespace
 
-Bedrock::Result<void> __fastcall hook_packet_read(
+Bedrock::Result<void> handle_packet_read(
     Packet* self, ReadOnlyBinaryStream& stream,
     const cereal::ReflectionCtx& reflection) {
     if (!g_readTraceLogged.exchange(true, std::memory_order_relaxed)) {
-        LOG_INFO("[AutoFishing][Trace] Packet::read detour entered; resolving original function.");
+        LOG_INFO("[AutoFishing][Trace] Packet::read member detour entered (self={:p}, stream={:p}, reflection={:p}).",
+            static_cast<void*>(self), static_cast<void*>(&stream),
+            const_cast<cereal::ReflectionCtx*>(&reflection));
     }
 
-    void** incomingVtable = nullptr;
-    const bool haveVtable = read_vtable(self, &incomingVtable);
-
-    HookInfo info{};
-    {
-        std::lock_guard lock(g_mutex);
-        if (haveVtable) {
-            for (const auto& entry : g_hookByVtable) {
-                if (entry.first == incomingVtable) {
-                    info = entry.second;
-                    break;
-                }
-            }
-        }
-
-        // The hook is installed on the ActorEventPacket vtable itself. Keep a
-        // stable fallback so an in-flight call still reaches Bedrock's original
-        // read implementation while disable() is restoring the vtable.
-        if (!info.original) {
-            info.original = g_fallbackOriginal.load(std::memory_order_acquire);
-            info.packetId = kActorEventPacket;
-        }
-    }
-
-    if (!info.original) {
-        LOG_ERROR("[AutoFishing] Packet::read detour has no original function; packet read cannot continue.");
+    if (!self) {
+        LOG_ERROR("[AutoFishing] Packet::read member detour received a null packet.");
         return Bedrock::Result<void>{};
     }
 
-    if (!haveVtable) {
-        LOG_WARN("[AutoFishing] Could not inspect packet vtable in read detour; using saved original.");
+    // The original address is read from the factory-created ActorEventPacket
+    // vtable before replacing its slot. Invoke it as a Packet member function,
+    // not as a free function: MSVC x64's hidden return storage and 'this'
+    // placement must match the original member-function ABI.
+    void* originalAddress = g_fallbackOriginal.load(std::memory_order_acquire);
+    if (!originalAddress) {
+        LOG_ERROR("[AutoFishing] Packet::read original function pointer is unavailable.");
+        return Bedrock::Result<void>{};
     }
 
     std::string body;
@@ -195,12 +205,12 @@ Bedrock::Result<void> __fastcall hook_packet_read(
         body.clear();
     }
 
-    const auto original = reinterpret_cast<PacketReadFn>(info.original);
-    Bedrock::Result<void> result = original(self, stream, reflection);
+    const auto original = member_function_from_address(originalAddress);
+    Bedrock::Result<void> result = (self->*original)(stream, reflection);
     if (!result.asExpected().has_value() || body.empty()) return result;
 
     try {
-        process_packet(info.packetId, body);
+        process_packet(kActorEventPacket, body);
     } catch (...) {
         LOG_WARN("[AutoFishing] Ignored a malformed ActorEventPacket.");
     }
