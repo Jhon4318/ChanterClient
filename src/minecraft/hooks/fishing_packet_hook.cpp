@@ -174,9 +174,7 @@ Bedrock::Result<void> handle_packet_read(
     Packet* self, ReadOnlyBinaryStream& stream,
     const cereal::ReflectionCtx& reflection) {
     if (!g_readTraceLogged.exchange(true, std::memory_order_relaxed)) {
-        LOG_INFO("[AutoFishing][Trace] Packet::read member detour entered (self={:p}, stream={:p}, reflection={:p}).",
-            static_cast<void*>(self), static_cast<void*>(&stream),
-            const_cast<cereal::ReflectionCtx*>(&reflection));
+        LOG_INFO("[AutoFishing][Trace] Packet::read member detour entered.");
     }
 
     if (!self) {
