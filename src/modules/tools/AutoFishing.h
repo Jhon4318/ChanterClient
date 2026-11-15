@@ -43,7 +43,7 @@ private:
     void on_fishing_packet(FishingPacketEvent& event);
     bool game_is_focused() const;
     bool send_rod_use();
-    void release_rod_use();
+    void release_rod_use(bool force = false);
     void prepare_cast(std::uint64_t now);
     void try_adopt_bobber(std::uint64_t now);
 
