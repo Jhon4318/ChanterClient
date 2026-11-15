@@ -21,6 +21,8 @@ namespace {
 constexpr std::uint64_t kBobberSpawnTimeoutMs = 2500;
 constexpr std::uint64_t kRodUseMinimumHoldMs = 150;
 constexpr std::uint64_t kBobberReturnTimeoutMs = 2000;
+constexpr std::uint64_t kBobberReturnMinimumObserveMs = 200;
+constexpr int kBobberReturnMissingTicksRequired = 2;
 constexpr std::uint64_t kStaleBobberTimeoutMs = 30000;
 constexpr std::uint64_t kInitialCastDelayMs = 600;
 constexpr float kBobberSearchRangeSq = 48.0f * 48.0f;
@@ -34,9 +36,9 @@ std::atomic_bool g_traceWorldBobberScan{false};
 AutoFishing::AutoFishing()
     : Module("Tools", "AutoFishing", "Reel in and recast when a fish bites.") {
     m_recastDelayMs = add_setting<config::IntSetting>(
-        "Recast delay", "Delay before casting again.", 400, 100, 1500);
+        "Recast delay", "Delay in milliseconds after the active bobber is retrieved.", 400, 0, 10000);
     m_initialCastDelayMs = add_setting<config::IntSetting>(
-        "Initial cast delay", "Wait after enabling before the first cast.", 600, 200, 1500);
+        "Initial cast delay", "Delay in milliseconds after Minecraft is focused and menus are closed.", 600, 0, 10000);
 }
 
 void AutoFishing::on_enable() {
@@ -48,10 +50,12 @@ void AutoFishing::on_enable() {
     {
         std::lock_guard lock(m_mutex);
         m_state = State::WaitingForWorld;
-        m_stateSince = GetTickCount64();
+        // Start the initial delay only after the game is focused and menus are closed.
+        m_stateSince = 0;
         m_bobberRuntimeId = 0;
         m_castAttempts = 0;
         m_pendingReel = false;
+        m_bobberReturnMissingTicks = 0;
         m_havePlayerPosition = false;
         m_previousBobberIds.clear();
         m_bobbers.clear();
@@ -105,6 +109,7 @@ void AutoFishing::on_disable() {
         m_bobberRuntimeId = 0;
         m_castAttempts = 0;
         m_pendingReel = false;
+        m_bobberReturnMissingTicks = 0;
         m_havePlayerPosition = false;
         m_previousBobberIds.clear();
         m_bobbers.clear();
@@ -119,14 +124,15 @@ bool AutoFishing::game_is_focused() const {
     return processId == GetCurrentProcessId();
 }
 
+bool AutoFishing::input_environment_ready() const {
+    return game_is_focused() &&
+        !ClientInstance::isClientUiOpen() &&
+        !ClientInstance::isGameUiOpen();
+}
+
 bool AutoFishing::send_rod_use() {
     std::lock_guard inputLock(m_inputMutex);
-    HWND window = GetForegroundWindow();
-    if (!window || !game_is_focused() ||
-        ClientInstance::isClientUiOpen() ||
-        ClientInstance::isGameUiOpen()) {
-        return false;
-    }
+    if (!input_environment_ready()) return false;
 
     if (m_rightClickReleasePending) {
         LOG_WARN("[AutoFishing] Previous right-click is still awaiting release.");
@@ -176,6 +182,12 @@ void AutoFishing::release_rod_use(bool force) {
 }
 
 void AutoFishing::prepare_cast(std::uint64_t now) {
+    // Do not consume a cast attempt while the game is unfocused or a menu is open.
+    if (!input_environment_ready()) return;
+
+    m_bobberRuntimeId = 0;
+    m_pendingReel = false;
+    m_bobberReturnMissingTicks = 0;
     m_previousBobberIds.clear();
     for (const auto& [id, data] : m_bobbers) {
         if (now >= data.lastUpdate && now - data.lastUpdate <= kStaleBobberTimeoutMs) {
@@ -184,6 +196,7 @@ void AutoFishing::prepare_cast(std::uint64_t now) {
     }
 
     ++m_castAttempts;
+    LOG_INFO("[AutoFishing] Automatic cast attempt {}/2.", m_castAttempts);
     if (!send_rod_use()) {
         m_stateSince = now;
         if (m_castAttempts < 2) {
@@ -202,6 +215,7 @@ void AutoFishing::prepare_cast(std::uint64_t now) {
     m_stateSince = now;
     m_bobberRuntimeId = 0;
     m_pendingReel = false;
+    m_bobberReturnMissingTicks = 0;
 }
 
 void AutoFishing::try_adopt_bobber(std::uint64_t now) {
@@ -251,10 +265,17 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
         release_rod_use();
     }
 
-    if (ClientInstance::isClientUiOpen() || ClientInstance::isGameUiOpen() || !game_is_focused()) return;
+    const bool inputReady = input_environment_ready();
+    if (event.tickingActor != event.localPlayer && !inputReady) return;
 
     std::lock_guard lock(m_mutex);
     if (!enabled()) return;
+    if (!inputReady) {
+        // If the click GUI was used to enable the module, restart the initial
+        // delay after the user closes it and returns focus to Minecraft.
+        if (m_state == State::WaitingForWorld) m_stateSince = 0;
+        return;
+    }
 
     const std::uint64_t now = GetTickCount64();
     Actor* actor = event.tickingActor;
@@ -269,8 +290,7 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
             data.position = actor->getPosition();
             data.velocity = actor->getVelocity();
             data.lastUpdate = now;
-            if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber ||
-                m_state == State::WaitingForWorld || m_state == State::RecastDelay) {
+            if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber) {
                 try_adopt_bobber(now);
             }
         }
@@ -290,6 +310,7 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
             worldActors.size());
     }
 
+    bool activeBobberPresent = false;
     for (Actor* worldActor : worldActors) {
         if (!worldActor || worldActor == event.localPlayer ||
             worldActor->getActorType() != ActorType::FishingHook) {
@@ -303,14 +324,22 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
             LOG_INFO("[AutoFishing][Trace] FishingHook found by world actor scan.");
         }
 
+        if (m_state == State::WaitingForBobberReturn && runtimeId == m_bobberRuntimeId) {
+            activeBobberPresent = true;
+        }
+
         auto& data = m_bobbers[runtimeId];
         data.position = worldActor->getPosition();
         data.velocity = worldActor->getVelocity();
         data.lastUpdate = now;
-        if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber ||
-            m_state == State::WaitingForWorld || m_state == State::RecastDelay) {
+        if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber) {
             try_adopt_bobber(now);
         }
+    }
+
+    if (m_state == State::WaitingForBobberReturn) {
+        if (activeBobberPresent) m_bobberReturnMissingTicks = 0;
+        else ++m_bobberReturnMissingTicks;
     }
 
     switch (m_state) {
@@ -319,10 +348,16 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
     case State::Fishing:
         break;
     case State::WaitingForWorld: {
-        try_adopt_bobber(now);
+        // Existing hooks may belong to other players; only adopt hooks spawned
+        // after this module has sent its own cast input.
+        if (m_stateSince == 0) {
+            m_stateSince = now;
+            LOG_INFO("[AutoFishing] Game input is ready; initial cast delay started ({} ms).",
+                m_initialCastDelayMs ? m_initialCastDelayMs->value() : static_cast<int>(kInitialCastDelayMs));
+        }
         const int delay = m_initialCastDelayMs ? m_initialCastDelayMs->value()
                                                 : static_cast<int>(kInitialCastDelayMs);
-        if (m_bobberRuntimeId == 0 && now >= m_stateSince &&
+        if (now >= m_stateSince &&
             now - m_stateSince >= static_cast<std::uint64_t>(delay)) {
             prepare_cast(now);
         }
@@ -347,17 +382,34 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
     case State::SearchingForBobber:
         try_adopt_bobber(now);
         break;
-    case State::WaitingForBobberReturn:
-        if (now - m_stateSince >= kBobberReturnTimeoutMs) {
+    case State::WaitingForBobberReturn: {
+        const std::uint64_t elapsed = now >= m_stateSince ? now - m_stateSince : 0;
+        const bool bobberReturned = elapsed >= kBobberReturnMinimumObserveMs &&
+            m_bobberReturnMissingTicks >= kBobberReturnMissingTicksRequired;
+        const bool returnTimedOut = elapsed >= kBobberReturnTimeoutMs;
+        if (bobberReturned || returnTimedOut) {
+            const std::uint64_t returnedId = m_bobberRuntimeId;
+            if (returnedId != 0) {
+                m_previousBobberIds.insert(returnedId);
+                if (bobberReturned) m_bobbers.erase(returnedId);
+            }
+            m_bobberRuntimeId = 0;
+            m_bobberReturnMissingTicks = 0;
             m_state = State::RecastDelay;
             m_stateSince = now;
-            LOG_WARN("[AutoFishing] Bobber return timed out; recast queued.");
+            const int delay = m_recastDelayMs ? m_recastDelayMs->value() : 400;
+            if (bobberReturned) {
+                LOG_INFO("[AutoFishing] Bobber disappeared; configured recast delay started ({} ms).", delay);
+            } else {
+                LOG_WARN("[AutoFishing] Bobber return was not observed within {} ms; starting recast delay ({} ms).",
+                    kBobberReturnTimeoutMs, delay);
+            }
         }
         break;
+    }
     case State::RecastDelay: {
-        try_adopt_bobber(now);
         const int delay = m_recastDelayMs ? m_recastDelayMs->value() : 400;
-        if (m_state == State::RecastDelay &&
+        if (now >= m_stateSince &&
             now - m_stateSince >= static_cast<std::uint64_t>(delay)) {
             prepare_cast(now);
         }
@@ -370,7 +422,8 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
             m_pendingReel = false;
             m_state = State::WaitingForBobberReturn;
             m_stateSince = now;
-            LOG_INFO("[AutoFishing] Reeling input dispatched.");
+            m_bobberReturnMissingTicks = 0;
+            LOG_INFO("[AutoFishing] Reeling input dispatched; waiting for the active bobber to disappear.");
         } else {
             m_pendingReel = false;
             m_state = State::InputUnavailable;
@@ -399,5 +452,15 @@ void AutoFishing::on_settings_render() {
     ImGui::TextDisabled("Status: %s", status);
     ImGui::TextDisabled("Bite event: %s",
         m_packetHooksReady.load(std::memory_order_acquire) ? "Ready" : "Unavailable");
+    ImGui::TextDisabled("Recast delay: %d ms", m_recastDelayMs ? m_recastDelayMs->value() : 400);
+    ImGui::TextDisabled("Initial cast delay: %d ms", m_initialCastDelayMs ? m_initialCastDelayMs->value() : static_cast<int>(kInitialCastDelayMs));
+    if (m_state == State::RecastDelay) {
+        const std::uint64_t now = GetTickCount64();
+        const int delay = m_recastDelayMs ? m_recastDelayMs->value() : 400;
+        const std::uint64_t elapsed = now >= m_stateSince ? now - m_stateSince : 0;
+        const std::uint64_t remaining = elapsed >= static_cast<std::uint64_t>(delay)
+            ? 0 : static_cast<std::uint64_t>(delay) - elapsed;
+        ImGui::TextDisabled("Next cast in: %llu ms", static_cast<unsigned long long>(remaining));
+    }
     ImGui::TextDisabled("Hold a rod and aim at water before enabling.");
 }
