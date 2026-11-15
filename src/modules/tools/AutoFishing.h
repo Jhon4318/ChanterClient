@@ -42,6 +42,7 @@ private:
     void on_actor_entity_tick(ActorEntityTickEvent& event);
     void on_fishing_packet(FishingPacketEvent& event);
     bool game_is_focused() const;
+    bool input_environment_ready() const;
     bool send_rod_use();
     void release_rod_use(bool force = false);
     void prepare_cast(std::uint64_t now);
@@ -63,6 +64,7 @@ private:
     std::mutex m_inputMutex;
     bool m_rightClickReleasePending = false;
     std::uint64_t m_rightClickDownAt = 0;
+    int m_bobberReturnMissingTicks = 0;
     std::atomic_bool m_packetHooksReady{false};
     math::Vec3 m_localPlayerPosition{};
     std::unordered_map<std::uint64_t, BobberData> m_bobbers;
