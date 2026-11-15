@@ -21,6 +21,7 @@ namespace {
 constexpr std::uint64_t kBobberSpawnTimeoutMs = 2500;
 constexpr std::uint64_t kRodUseMinimumHoldMs = 150;
 constexpr std::uint64_t kBobberReturnTimeoutMs = 2000;
+constexpr std::uint64_t kCastRetryDelayMs = 500;
 constexpr std::uint64_t kBobberReturnMinimumObserveMs = 200;
 constexpr int kBobberReturnMissingTicksRequired = 2;
 constexpr std::uint64_t kStaleBobberTimeoutMs = 30000;
@@ -200,8 +201,8 @@ void AutoFishing::prepare_cast(std::uint64_t now) {
     if (!send_rod_use()) {
         m_stateSince = now;
         if (m_castAttempts < 2) {
-            m_state = State::RecastDelay;
-            LOG_WARN("[AutoFishing] Cast input failed; one retry is queued.");
+            m_state = State::RetryCastDelay;
+            LOG_WARN("[AutoFishing] Cast input failed; retry queued in {} ms.", kCastRetryDelayMs);
         } else {
             m_state = State::SearchingForBobber;
             ui::notifications::warning(
@@ -290,7 +291,8 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
             data.position = actor->getPosition();
             data.velocity = actor->getVelocity();
             data.lastUpdate = now;
-            if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber) {
+            if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber ||
+                m_state == State::RetryCastDelay) {
                 try_adopt_bobber(now);
             }
         }
@@ -332,7 +334,8 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
         data.position = worldActor->getPosition();
         data.velocity = worldActor->getVelocity();
         data.lastUpdate = now;
-        if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber) {
+        if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber ||
+            m_state == State::RetryCastDelay) {
             try_adopt_bobber(now);
         }
     }
@@ -367,9 +370,9 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
         try_adopt_bobber(now);
         if (m_state == State::WaitingForBobber && now - m_stateSince >= kBobberSpawnTimeoutMs) {
             if (m_castAttempts < 2) {
-                m_state = State::RecastDelay;
+                m_state = State::RetryCastDelay;
                 m_stateSince = now;
-                LOG_WARN("[AutoFishing] No bobber detected; one automatic cast retry is queued.");
+                LOG_WARN("[AutoFishing] No bobber detected; retry queued in {} ms.", kCastRetryDelayMs);
             } else {
                 m_state = State::SearchingForBobber;
                 m_stateSince = now;
@@ -407,6 +410,13 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
         }
         break;
     }
+    case State::RetryCastDelay:
+        try_adopt_bobber(now);
+        if (m_state == State::RetryCastDelay && now >= m_stateSince &&
+            now - m_stateSince >= kCastRetryDelayMs) {
+            prepare_cast(now);
+        }
+        break;
     case State::RecastDelay: {
         const int delay = m_recastDelayMs ? m_recastDelayMs->value() : 400;
         if (now >= m_stateSince &&
@@ -445,6 +455,7 @@ void AutoFishing::on_settings_render() {
     case State::SearchingForBobber: status = "Searching for bobber"; break;
     case State::Fishing: status = "Waiting for bite"; break;
     case State::WaitingForBobberReturn: status = "Reeling in"; break;
+    case State::RetryCastDelay: status = "Retrying cast"; break;
     case State::RecastDelay: status = "Recasting"; break;
     case State::InputUnavailable: status = "Input unavailable"; break;
     }
