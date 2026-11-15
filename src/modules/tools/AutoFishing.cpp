@@ -18,7 +18,8 @@
 #include <cmath>
 
 namespace {
-constexpr std::uint64_t kBobberSpawnTimeoutMs = 5000;
+constexpr std::uint64_t kBobberSpawnTimeoutMs = 2500;
+constexpr std::uint64_t kRodUseMinimumHoldMs = 150;
 constexpr std::uint64_t kBobberReturnTimeoutMs = 2000;
 constexpr std::uint64_t kStaleBobberTimeoutMs = 30000;
 constexpr std::uint64_t kInitialCastDelayMs = 600;
@@ -73,7 +74,7 @@ void AutoFishing::on_enable() {
 }
 
 void AutoFishing::on_disable() {
-    release_rod_use();
+    release_rod_use(true);
 
     if (m_tickListener != 0) {
         EventBus::instance().unsubscribe(m_tickListener);
@@ -115,6 +116,7 @@ bool AutoFishing::game_is_focused() const {
 }
 
 bool AutoFishing::send_rod_use() {
+    std::lock_guard inputLock(m_inputMutex);
     HWND window = GetForegroundWindow();
     if (!window || !game_is_focused() ||
         ClientInstance::isClientUiOpen() ||
@@ -122,7 +124,7 @@ bool AutoFishing::send_rod_use() {
         return false;
     }
 
-    if (m_rightClickReleasePending.load(std::memory_order_acquire)) {
+    if (m_rightClickReleasePending) {
         LOG_WARN("[AutoFishing] Previous right-click is still awaiting release.");
         return false;
     }
@@ -138,13 +140,20 @@ bool AutoFishing::send_rod_use() {
         return false;
     }
 
-    m_rightClickReleasePending.store(true, std::memory_order_release);
-    LOG_INFO("[AutoFishing] Right-button down queued; release scheduled for next player tick.");
+    m_rightClickReleasePending = true;
+    m_rightClickDownAt = GetTickCount64();
+    LOG_INFO("[AutoFishing] Right-button down sent; holding for at least {} ms.",
+        kRodUseMinimumHoldMs);
     return true;
 }
 
-void AutoFishing::release_rod_use() {
-    if (!m_rightClickReleasePending.load(std::memory_order_acquire)) return;
+void AutoFishing::release_rod_use(bool force) {
+    std::lock_guard inputLock(m_inputMutex);
+    if (!m_rightClickReleasePending) return;
+
+    const std::uint64_t now = GetTickCount64();
+    const std::uint64_t heldMs = now >= m_rightClickDownAt ? now - m_rightClickDownAt : 0;
+    if (!force && heldMs < kRodUseMinimumHoldMs) return;
 
     INPUT input{};
     input.type = INPUT_MOUSE;
@@ -156,8 +165,10 @@ void AutoFishing::release_rod_use() {
         return;
     }
 
-    m_rightClickReleasePending.store(false, std::memory_order_release);
-    LOG_INFO("[AutoFishing] Right-button up queued after one player tick.");
+    m_rightClickReleasePending = false;
+    m_rightClickDownAt = 0;
+    LOG_INFO("[AutoFishing] Right-button up sent after {} ms{}.", heldMs,
+        force ? " (forced during disable)" : "");
 }
 
 void AutoFishing::prepare_cast(std::uint64_t now) {
