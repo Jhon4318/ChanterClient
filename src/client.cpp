@@ -8,6 +8,32 @@
 #include "render/dx12/dx12_hook.h"
 #include <utils/logger.h>
 
+#include <atomic>
+
+
+namespace {
+    LPTOP_LEVEL_EXCEPTION_FILTER g_previousExceptionFilter = nullptr;
+    std::atomic_bool g_exceptionLogged{false};
+
+    LONG WINAPI chanter_unhandled_exception_filter(EXCEPTION_POINTERS* exceptionInfo) {
+        if (!g_exceptionLogged.exchange(true, std::memory_order_relaxed) &&
+            exceptionInfo && exceptionInfo->ExceptionRecord) {
+            const auto* record = exceptionInfo->ExceptionRecord;
+            LOG_FATAL("Unhandled Windows exception: code=0x{:08X}, address={:p}.",
+                static_cast<unsigned int>(record->ExceptionCode),
+                record->ExceptionAddress);
+
+            if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+                record->NumberParameters >= 2) {
+                LOG_FATAL("Access violation: operation={}, memory address={:p}.",
+                    static_cast<unsigned int>(record->ExceptionInformation[0]),
+                    reinterpret_cast<void*>(record->ExceptionInformation[1]));
+            }
+        }
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+}
+
 Client& Client::instance() {
     static Client client;
     return client;
@@ -17,6 +43,8 @@ void Client::initialize(HMODULE module) {
     m_module = module;
 
     Logger::instance().initialize("ChanterClient", true, true);
+    g_exceptionLogged.store(false, std::memory_order_relaxed);
+    g_previousExceptionFilter = SetUnhandledExceptionFilter(&chanter_unhandled_exception_filter);
     LOG_INFO("Initializing ChanterClient for Minecraft Bedrock v26.60...");
 
     ModuleManager::instance().initialize();
@@ -48,6 +76,8 @@ void Client::initialize(HMODULE module) {
 
 void Client::shutdown() {
     LOG_INFO("Shutting down ChanterClient...");
+    SetUnhandledExceptionFilter(g_previousExceptionFilter);
+    g_previousExceptionFilter = nullptr;
     dx12_hook::stop();
     minecraft::hooks::shutdown();
     ModuleManager::instance().shutdown();
