@@ -44,6 +44,7 @@ struct HookInfo {
 std::mutex g_mutex;
 std::atomic_bool g_initialized{false};
 std::atomic_bool g_readTraceLogged{false};
+std::atomic<void*> g_fallbackOriginal{nullptr};
 std::vector<HookRecord> g_hooks;
 std::vector<std::shared_ptr<Packet>> g_packetKeepAlive;
 std::vector<std::pair<void**, HookInfo>> g_hookByVtable;
@@ -124,6 +125,7 @@ bool patch_packet_vtable(const std::shared_ptr<Packet>& packet, int expectedId) 
     void** slot = &vtable[kPacketReadWithReflectionVtableSlot];
     void* original = *slot;
     if (!original) return false;
+    g_fallbackOriginal.store(original, std::memory_order_release);
 
     DWORD oldProtect = 0;
     if (!VirtualProtect(slot, sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProtect)) {
@@ -145,25 +147,41 @@ bool patch_packet_vtable(const std::shared_ptr<Packet>& packet, int expectedId) 
 Bedrock::Result<void> __fastcall hook_packet_read(
     Packet* self, ReadOnlyBinaryStream& stream,
     const cereal::ReflectionCtx& reflection) {
+    if (!g_readTraceLogged.exchange(true, std::memory_order_relaxed)) {
+        LOG_INFO("[AutoFishing][Trace] Packet::read detour entered; resolving original function.");
+    }
+
     void** incomingVtable = nullptr;
-    if (!read_vtable(self, &incomingVtable)) return Bedrock::Result<void>{};
+    const bool haveVtable = read_vtable(self, &incomingVtable);
 
     HookInfo info{};
     {
         std::lock_guard lock(g_mutex);
-        bool found = false;
-        for (const auto& entry : g_hookByVtable) {
-            if (entry.first == incomingVtable) {
-                info = entry.second;
-                found = info.original != nullptr;
-                break;
+        if (haveVtable) {
+            for (const auto& entry : g_hookByVtable) {
+                if (entry.first == incomingVtable) {
+                    info = entry.second;
+                    break;
+                }
             }
         }
-        if (!found) return Bedrock::Result<void>{};
+
+        // The hook is installed on the ActorEventPacket vtable itself. Keep a
+        // stable fallback so an in-flight call still reaches Bedrock's original
+        // read implementation while disable() is restoring the vtable.
+        if (!info.original) {
+            info.original = g_fallbackOriginal.load(std::memory_order_acquire);
+            info.packetId = kActorEventPacket;
+        }
     }
 
-    if (!g_readTraceLogged.exchange(true, std::memory_order_relaxed)) {
-        LOG_INFO("[AutoFishing][Trace] ActorEventPacket::read hook entered.");
+    if (!info.original) {
+        LOG_ERROR("[AutoFishing] Packet::read detour has no original function; packet read cannot continue.");
+        return Bedrock::Result<void>{};
+    }
+
+    if (!haveVtable) {
+        LOG_WARN("[AutoFishing] Could not inspect packet vtable in read detour; using saved original.");
     }
 
     std::string body;
@@ -216,7 +234,9 @@ bool initialize() {
     }
 
     g_initialized.store(true, std::memory_order_release);
-    LOG_INFO("[AutoFishing] Fish-bite packet hook installed (packet ID=27, event ID=13, read slot=8).");
+    g_readTraceLogged.store(false, std::memory_order_relaxed);
+    LOG_INFO("[AutoFishing] Fish-bite packet hook installed (packet ID={}, event ID={}, read slot={}).",
+        kActorEventPacket, kFishHookHooktimeEvent, kPacketReadWithReflectionVtableSlot);
     return true;
 }
 
