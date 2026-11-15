@@ -57,6 +57,7 @@ private:
     std::uint64_t m_tickListener = 0;
     std::uint64_t m_packetListener = 0;
     std::uint64_t m_stateSince = 0;
+    std::uint64_t m_pauseStartedAt = 0;
     std::uint64_t m_bobberRuntimeId = 0;
     int m_castAttempts = 0;
     bool m_pendingReel = false;
