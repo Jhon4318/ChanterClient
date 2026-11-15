@@ -59,7 +59,10 @@ private:
     int m_castAttempts = 0;
     bool m_pendingReel = false;
     bool m_havePlayerPosition = false;
-    std::atomic_bool m_rightClickReleasePending{false};
+    // Serialize injected mouse transitions and keep the button down long enough for Bedrock input polling.
+    std::mutex m_inputMutex;
+    bool m_rightClickReleasePending = false;
+    std::uint64_t m_rightClickDownAt = 0;
     std::atomic_bool m_packetHooksReady{false};
     math::Vec3 m_localPlayerPosition{};
     std::unordered_map<std::uint64_t, BobberData> m_bobbers;
