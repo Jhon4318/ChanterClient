@@ -53,6 +53,7 @@ void AutoFishing::on_enable() {
         m_state = State::WaitingForWorld;
         // Start the initial delay only after the game is focused and menus are closed.
         m_stateSince = 0;
+        m_pauseStartedAt = 0;
         m_bobberRuntimeId = 0;
         m_castAttempts = 0;
         m_pendingReel = false;
@@ -107,6 +108,7 @@ void AutoFishing::on_disable() {
         }
         m_state = State::Disabled;
         m_stateSince = 0;
+        m_pauseStartedAt = 0;
         m_bobberRuntimeId = 0;
         m_castAttempts = 0;
         m_pendingReel = false;
@@ -275,10 +277,19 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
         // If the click GUI was used to enable the module, restart the initial
         // delay after the user closes it and returns focus to Minecraft.
         if (m_state == State::WaitingForWorld) m_stateSince = 0;
+        if (m_pauseStartedAt == 0) m_pauseStartedAt = GetTickCount64();
         return;
     }
 
     const std::uint64_t now = GetTickCount64();
+    if (m_pauseStartedAt != 0) {
+        const std::uint64_t pausedFor = now >= m_pauseStartedAt ? now - m_pauseStartedAt : 0;
+        if (m_state != State::WaitingForWorld && m_stateSince != 0) {
+            m_stateSince += pausedFor;
+        }
+        m_pauseStartedAt = 0;
+        LOG_INFO("[AutoFishing] Resumed after {} ms without game input.", pausedFor);
+    }
     Actor* actor = event.tickingActor;
 
     if (actor != event.localPlayer && actor->getActorType() == ActorType::FishingHook) {
