@@ -90,6 +90,10 @@ void AutoFishing::on_disable() {
 
     {
         std::lock_guard lock(m_mutex);
+        // A player-tick callback may have queued a DOWN immediately before
+        // disable() began. Release again while holding the state mutex so no
+        // in-flight callback can leave the injected button pressed.
+        release_rod_use(true);
         if (m_state == State::Fishing) {
             const std::uint64_t stoppedAt = GetTickCount64();
             const std::uint64_t elapsed = stoppedAt >= m_stateSince ? stoppedAt - m_stateSince : 0;
