@@ -29,6 +29,7 @@ private:
         SearchingForBobber,
         Fishing,
         WaitingForBobberReturn,
+        RetryCastDelay,
         RecastDelay,
         InputUnavailable
     };
