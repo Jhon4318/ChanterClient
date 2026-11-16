@@ -26,12 +26,16 @@ constexpr std::uint64_t kBobberReturnMinimumObserveMs = 200;
 constexpr int kBobberReturnMissingTicksRequired = 2;
 constexpr std::uint64_t kStaleBobberTimeoutMs = 30000;
 constexpr std::uint64_t kInitialCastDelayMs = 600;
-constexpr float kBobberSearchRangeSq = 48.0f * 48.0f;
+// Actor scanning has no owner check, so only accept hooks near the local player's cast origin.
+// A fishing hook is created beside the player; a large world radius can claim another player's bobber.
+constexpr float kBobberSearchRange = 4.0f;
+constexpr float kBobberSearchRangeSq = kBobberSearchRange * kBobberSearchRange;
 
 std::atomic_bool g_traceLocalTick{false};
 std::atomic_bool g_traceActorBobberTick{false};
 std::atomic_bool g_traceWorldActorScan{false};
 std::atomic_bool g_traceWorldBobberScan{false};
+std::atomic_bool g_traceIgnoredDistantBobber{false};
 }
 
 AutoFishing::AutoFishing()
@@ -47,6 +51,7 @@ void AutoFishing::on_enable() {
     g_traceActorBobberTick.store(false, std::memory_order_relaxed);
     g_traceWorldActorScan.store(false, std::memory_order_relaxed);
     g_traceWorldBobberScan.store(false, std::memory_order_relaxed);
+    g_traceIgnoredDistantBobber.store(false, std::memory_order_relaxed);
 
     {
         std::lock_guard lock(m_mutex);
@@ -230,6 +235,13 @@ void AutoFishing::try_adopt_bobber(std::uint64_t now) {
         if (m_previousBobberIds.contains(id)) continue;
         if (now < data.lastUpdate || now - data.lastUpdate > kStaleBobberTimeoutMs) continue;
         const float distanceSq = data.position.distance_sq(m_localPlayerPosition);
+        if (distanceSq > kBobberSearchRangeSq) {
+            if (!g_traceIgnoredDistantBobber.exchange(true, std::memory_order_relaxed)) {
+                LOG_INFO("[AutoFishing][Trace] Ignored distant FishingHook (runtime ID={}, distance={:.2f}, adoption limit={:.1f} blocks).",
+                    id, std::sqrt(distanceSq), kBobberSearchRange);
+            }
+            continue;
+        }
         if (distanceSq < bestDistanceSq) {
             bestDistanceSq = distanceSq;
             bestId = id;
