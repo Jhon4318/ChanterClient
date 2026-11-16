@@ -37,6 +37,7 @@ private:
     struct BobberData {
         math::Vec3 position{};
         math::Vec3 velocity{};
+        std::uint64_t sourceUniqueId = 0;
         std::uint64_t lastUpdate = 0;
     };
 
@@ -59,6 +60,7 @@ private:
     std::uint64_t m_stateSince = 0;
     std::uint64_t m_pauseStartedAt = 0;
     std::uint64_t m_bobberRuntimeId = 0;
+    std::uint64_t m_localPlayerUniqueId = 0;
     int m_castAttempts = 0;
     bool m_pendingReel = false;
     bool m_havePlayerPosition = false;
