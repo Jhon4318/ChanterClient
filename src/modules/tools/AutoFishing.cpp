@@ -26,8 +26,8 @@ constexpr std::uint64_t kBobberReturnMinimumObserveMs = 200;
 constexpr int kBobberReturnMissingTicksRequired = 2;
 constexpr std::uint64_t kStaleBobberTimeoutMs = 30000;
 constexpr std::uint64_t kInitialCastDelayMs = 600;
-// Actor scanning has no owner check, so only accept hooks near the local player's cast origin.
-// A fishing hook is created beside the player; a large world radius can claim another player's bobber.
+// The current actor-scan path does not verify hook ownership, so keep adoption local.
+// A fishing hook is created beside its caster; a large world radius can claim another player's bobber.
 constexpr float kBobberSearchRange = 4.0f;
 constexpr float kBobberSearchRangeSq = kBobberSearchRange * kBobberSearchRange;
 
