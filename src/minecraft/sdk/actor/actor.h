@@ -116,6 +116,25 @@ public:
         return 0;
     }
 
+    // Actor::getSourceUniqueID() is virtual slot 83 in the Bedrock 1.26.60
+    // Actor vtable. FishingHook overrides it with the unique ID of the player
+    // that created the hook. The return type is an 8-byte ActorUniqueID.
+    std::uint64_t getSourceUniqueId() const {
+        constexpr std::size_t kGetSourceUniqueIdVtableSlot = 83;
+        if (!this) return 0;
+        __try {
+            auto** vtable = *reinterpret_cast<void***>(const_cast<Actor*>(this));
+            if (!vtable || !vtable[kGetSourceUniqueIdVtableSlot]) return 0;
+            using GetSourceUniqueIdFn = std::int64_t(__fastcall*)(const Actor*);
+            const auto function = reinterpret_cast<GetSourceUniqueIdFn>(
+                vtable[kGetSourceUniqueIdVtableSlot]);
+            return static_cast<std::uint64_t>(function(this));
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return 0;
+        }
+    }
+
     ActorType getActorType() const {
         if (auto* comp = getComponentByHash<ActorTypeComponent>(minecraft::actor_component_hash::Type)) {
             return comp->mType;
