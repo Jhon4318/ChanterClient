@@ -135,6 +135,20 @@ public:
         }
     }
 
+    // Bedrock 1.26.60.5 (Windows x64 client) Actor::mFishingHookID.
+    // This is the local player's exact active FishingHook ActorUniqueID.
+    std::uint64_t getFishingHookUniqueId() const {
+        constexpr std::uintptr_t kFishingHookIdOffset = 0x3C8;
+        if (!this) return 0;
+        __try {
+            const auto address = reinterpret_cast<std::uintptr_t>(this) + kFishingHookIdOffset;
+            return *reinterpret_cast<const std::uint64_t*>(address);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return 0;
+        }
+    }
+
     ActorType getActorType() const {
         if (auto* comp = getComponentByHash<ActorTypeComponent>(minecraft::actor_component_hash::Type)) {
             return comp->mType;
