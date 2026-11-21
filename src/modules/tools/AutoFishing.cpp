@@ -63,6 +63,7 @@ void AutoFishing::on_enable() {
         m_pauseStartedAt = 0;
         m_bobberRuntimeId = 0;
         m_localPlayerUniqueId = 0;
+        m_localFishingHookUniqueId = 0;
         m_castAttempts = 0;
         m_pendingReel = false;
         m_bobberReturnMissingTicks = 0;
@@ -119,6 +120,7 @@ void AutoFishing::on_disable() {
         m_pauseStartedAt = 0;
         m_bobberRuntimeId = 0;
         m_localPlayerUniqueId = 0;
+        m_localFishingHookUniqueId = 0;
         m_castAttempts = 0;
         m_pendingReel = false;
         m_bobberReturnMissingTicks = 0;
@@ -234,23 +236,26 @@ void AutoFishing::try_adopt_bobber(std::uint64_t now) {
     if (m_bobberRuntimeId != 0 || !m_havePlayerPosition || m_localPlayerUniqueId == 0) return;
 
     std::uint64_t bestId = 0;
+    bool bestMatchedByPlayerHookId = false;
     float bestDistanceSq = kBobberSearchRangeSq;
     for (const auto& [id, data] : m_bobbers) {
         if (m_previousBobberIds.contains(id)) continue;
         if (now < data.lastUpdate || now - data.lastUpdate > kStaleBobberTimeoutMs) continue;
 
-        // Never infer ownership from distance alone. A hook without a valid
-        // matching source ID is treated as foreign/unknown and cannot be reeled.
-        if (data.sourceUniqueId == 0) {
+        // Accept only an exact owner link. Prefer the local player's
+        // mFishingHookID; source UniqueID remains a second valid signal.
+        const bool sourceOwnerMatches =
+            data.sourceUniqueId != 0 && data.sourceUniqueId == m_localPlayerUniqueId;
+        const bool playerHookMatches =
+            data.uniqueId != 0 && m_localFishingHookUniqueId != 0 &&
+            data.uniqueId == m_localFishingHookUniqueId;
+        if (!sourceOwnerMatches && !playerHookMatches) {
             if (!g_traceSourceIdUnavailable.exchange(true, std::memory_order_relaxed)) {
-                LOG_WARN("[AutoFishing][Trace] Ignored FishingHook with unavailable source UniqueID (runtime ID={}).", id);
-            }
-            continue;
-        }
-        if (data.sourceUniqueId != m_localPlayerUniqueId) {
-            if (!g_traceForeignBobber.exchange(true, std::memory_order_relaxed)) {
-                LOG_INFO("[AutoFishing][Trace] Ignored foreign FishingHook (runtime ID={}, owner UniqueID={}, local UniqueID={}).",
-                    id, data.sourceUniqueId, m_localPlayerUniqueId);
+                LOG_WARN("[AutoFishing][Trace] FishingHook ownership mismatch/unavailable "
+                    "(runtime ID={}, bobber UniqueID={}, source UniqueID={}, local Player UniqueID={}, "
+                    "local mFishingHookID={}).",
+                    id, data.uniqueId, data.sourceUniqueId,
+                    m_localPlayerUniqueId, m_localFishingHookUniqueId);
             }
             continue;
         }
@@ -259,6 +264,7 @@ void AutoFishing::try_adopt_bobber(std::uint64_t now) {
         if (distanceSq < bestDistanceSq) {
             bestDistanceSq = distanceSq;
             bestId = id;
+            bestMatchedByPlayerHookId = playerHookMatches && !sourceOwnerMatches;
         }
     }
     if (bestId == 0) return;
@@ -268,8 +274,15 @@ void AutoFishing::try_adopt_bobber(std::uint64_t now) {
     m_pendingReel = false;
     m_state = State::Fishing;
     m_stateSince = now;
-    LOG_INFO("[AutoFishing] Own fishing bobber detected (runtime ID={}, owner UniqueID={}, distance={:.2f}).",
-        bestId, m_localPlayerUniqueId, std::sqrt(bestDistanceSq));
+    if (bestMatchedByPlayerHookId) {
+        LOG_INFO("[AutoFishing] Own fishing bobber detected via local mFishingHookID "
+            "(runtime ID={}, bobber UniqueID={}, distance={:.2f}).",
+            bestId, m_localFishingHookUniqueId, std::sqrt(bestDistanceSq));
+    } else {
+        LOG_INFO("[AutoFishing] Own fishing bobber detected via source UniqueID "
+            "(runtime ID={}, owner UniqueID={}, distance={:.2f}).",
+            bestId, m_localPlayerUniqueId, std::sqrt(bestDistanceSq));
+    }
 }
 
 void AutoFishing::on_fishing_packet(FishingPacketEvent& event) {
@@ -327,6 +340,7 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
             auto& data = m_bobbers[runtimeId];
             data.position = actor->getPosition();
             data.velocity = actor->getVelocity();
+            data.uniqueId = actor->getUniqueId();
             data.sourceUniqueId = actor->getSourceUniqueId();
             data.lastUpdate = now;
             if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber ||
@@ -343,6 +357,7 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
     }
     m_localPlayerPosition = event.localPlayer->getPosition();
     m_localPlayerUniqueId = event.localPlayer->getUniqueId();
+    m_localFishingHookUniqueId = event.localPlayer->getFishingHookUniqueId();
     m_havePlayerPosition = true;
 
     const auto worldActors = Actor::get_all(event.localPlayer);
@@ -372,6 +387,7 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
         auto& data = m_bobbers[runtimeId];
         data.position = worldActor->getPosition();
         data.velocity = worldActor->getVelocity();
+        data.uniqueId = worldActor->getUniqueId();
         // The world-scan path is active even when Actor::normalTick events
         // are not delivered for FishingHook actors. Keep ownership data fresh
         // here as well, otherwise sourceUniqueId remains zero and our own hook
