@@ -372,6 +372,11 @@ void AutoFishing::on_actor_entity_tick(ActorEntityTickEvent& event) {
         auto& data = m_bobbers[runtimeId];
         data.position = worldActor->getPosition();
         data.velocity = worldActor->getVelocity();
+        // The world-scan path is active even when Actor::normalTick events
+        // are not delivered for FishingHook actors. Keep ownership data fresh
+        // here as well, otherwise sourceUniqueId remains zero and our own hook
+        // is incorrectly rejected as unknown.
+        data.sourceUniqueId = worldActor->getSourceUniqueId();
         data.lastUpdate = now;
         if (m_state == State::WaitingForBobber || m_state == State::SearchingForBobber ||
             m_state == State::RetryCastDelay) {
